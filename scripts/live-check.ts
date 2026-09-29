@@ -145,19 +145,28 @@ const checks: Record<string, Check> = {
     const outside = join(homedir(), `.brainyard-live-outside-${brain}.txt`);
     rmSync(outside, { force: true });
     const cwd = dir();
+    const number = 1000 + Math.floor(Math.random() * 9000);
     const workspace = await run({
       brain,
       cwd,
       access: 'workspace',
       ...CHEAP[brain],
-      prompt: `Create inside.txt containing ok with your file tool. Then run the shell command: echo x > ${outside}\nReply with one line. Do not try workarounds.`,
+      prompt: [
+        'Step 1: create inside.txt containing ok with your file tool.',
+        `Step 2: run the shell command: node -e "console.log(${number} * 2)" and report its output.`,
+        `Step 3: run the shell command: echo x > ${outside}`,
+        'Reply with one line per step. Do not try workarounds.',
+      ].join('\n'),
     });
     cost += spent(workspace);
     const inside = existsSync(join(cwd, 'inside.txt'));
+    const ran = workspace.text.includes(String(number * 2));
     const leaked = existsSync(outside);
     rmSync(outside, { force: true });
     ok &&= inside && !leaked;
-    notes.push(`workspace: inside ${inside ? 'written' : 'NOT written'}, outside ${leaked ? 'LEAKED' : 'blocked'}`);
+    notes.push(
+      `workspace: file ${inside ? 'written' : 'NOT written'}, code ${ran ? 'ran' : 'refused'}, outside ${leaked ? 'LEAKED' : 'blocked'}`,
+    );
 
     const readonlyDir = dir();
     const readonly = await run({

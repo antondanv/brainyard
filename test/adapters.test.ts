@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Launch } from '../src/brains/adapter.js';
 import { antigravity, PRINT_TIMEOUT } from '../src/brains/antigravity.js';
-import { ANSWER_SYSTEM, claude } from '../src/brains/claude.js';
+import { ANSWER_SYSTEM, claude, WORKSPACE_SETTINGS } from '../src/brains/claude.js';
 import { codex, toml, unwrap } from '../src/brains/codex.js';
 import { tempDir } from './helpers.js';
 
@@ -63,8 +63,12 @@ describe('claude', () => {
 
   it('maps access levels', () => {
     expect(claude.plan(launch({ access: 'full' })).args).toContain('--dangerously-skip-permissions');
-    const workspace = claude.plan(launch({ access: 'workspace' })).args;
+    const workspace = claude.plan(launch({ access: 'workspace', flags: new Set(['--settings']) })).args;
     expect(flagValue(workspace, '--permission-mode')).toBe('acceptEdits');
+    expect(JSON.parse(flagValue(workspace, '--settings') ?? '{}')).toEqual({
+      sandbox: { enabled: true, autoAllowBashIfSandboxed: true },
+    });
+    expect(flagValue(workspace, '--settings')).toBe(WORKSPACE_SETTINGS);
     const readonly = claude.plan(launch({ access: 'readonly' })).args;
     expect(flagValue(readonly, '--permission-mode')).toBe('dontAsk');
     expect(flagValue(readonly, '--disallowedTools')).toContain('Bash');

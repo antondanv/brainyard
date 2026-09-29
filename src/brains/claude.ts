@@ -23,6 +23,9 @@ import {
 } from './adapter.js';
 
 const WEB_TOOLS = ['WebSearch', 'WebFetch'];
+
+/** Claude Code's sandbox: commands run confined to the working directory, without prompts. */
+export const WORKSPACE_SETTINGS = JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true } });
 const SHELL_TOOLS = ['Bash'];
 const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
 
@@ -60,7 +63,14 @@ export const claude: Adapter = {
       // privileges") unless IS_SANDBOX=1 — which is what a container is.
       if (isRoot()) env.IS_SANDBOX = '1';
     } else if (launch.access === 'workspace') {
+      // `acceptEdits` alone approves file edits and file-writing commands but
+      // refuses anything that runs code (`python3 fib.py` needs approval, and
+      // print mode has nobody to give it). Claude Code's own sandbox runs
+      // commands confined to the working directory without asking: writes
+      // elsewhere fail with "operation not permitted", network goes through
+      // its proxy. Without sandbox support commands are refused — fail closed.
       args.push('--permission-mode', 'acceptEdits');
+      if (launch.flags.has('--settings')) args.push('--settings', WORKSPACE_SETTINGS);
     } else {
       // `dontAsk` refuses whatever would need approval instead of waiting for
       // an answer nobody will give. Reads never need approval.
