@@ -4,5 +4,4 @@ coverage/
 *.log
 .DS_Store
 .env
-.brainyard/
 .scratch/
