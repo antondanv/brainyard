@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "brainyard_demo": {
+      "command": "node",
+      "args": ["examples/mcp-server.mjs"]
+    }
+  }
+}
