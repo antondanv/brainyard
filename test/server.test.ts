@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { request } from 'node:http';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,11 +60,23 @@ describe('dashboard server', () => {
     expect(server.local).toBe(true);
   });
 
-  it('serves the page with a strict content security policy', async () => {
+  it('serves the page with a policy that lets only its own script run', async () => {
     const page = await call('/');
     expect(page.status).toBe(200);
     expect(page.body).toContain('<title>Brainyard</title>');
-    expect(String(page.headers['content-security-policy'])).toContain("default-src 'none'");
+    const policy = String(page.headers['content-security-policy']);
+    expect(policy).toContain("default-src 'none'");
+    const script = /<script>([\s\S]*?)<\/script>/.exec(page.body)?.[1] ?? '';
+    const hash = createHash('sha256').update(script, 'utf8').digest('base64');
+    expect(policy).toContain(`script-src 'sha256-${hash}'`);
+    expect(policy).not.toContain("script-src 'unsafe-inline'");
+  });
+
+  it('answers bad input with 400, not 500', async () => {
+    const broken = await call('/api/ask', { method: 'POST', headers: json, body: '{not json' });
+    expect(broken.status).toBe(400);
+    expect(JSON.parse(broken.body).error.message).toMatch(/not valid JSON/);
+    expect((await call('/api/models/gpt-cli', { headers: auth })).status).toBe(400);
   });
 
   it('refuses the API without the token', async () => {

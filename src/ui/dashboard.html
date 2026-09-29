@@ -252,6 +252,7 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
     }
     return node;
   };
+  const widthOf = (node, percent) => { node.style.width = `${percent}%`; return node; };
   const store = {
     get(key) { try { return localStorage.getItem(key); } catch { return null; } },
     set(key, value) { try { localStorage.setItem(key, value); } catch { /* private mode */ } },
@@ -337,7 +338,7 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
           const resets = w.resetsAt ? ` · resets ${new Date(w.resetsAt * 1000).toLocaleString()}` : '';
           return h('div', { class: 'bar', title: `${w.window}: ${pct}% used${resets}` },
             h('span', {}, w.window.replace('_', '-')),
-            h('div', { class: 'track' }, h('div', { class: `fill ${pct >= 90 ? 'full' : pct >= 70 ? 'warn' : ''}`, style: `width:${Math.min(100, pct)}%` })),
+            h('div', { class: 'track' }, widthOf(h('div', { class: `fill ${pct >= 90 ? 'full' : pct >= 70 ? 'warn' : ''}` }), Math.min(100, pct))),
             h('span', {}, `${pct}%`));
         })));
       }

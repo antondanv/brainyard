@@ -71,8 +71,9 @@ export async function serve(options: ServeOptions = {}): Promise<Dashboard> {
 
   const server = createServer((req, res) => {
     handle(req, res).catch((error: unknown) => {
-      if (!res.headersSent) send(res, 500, { error: { kind: 'failed', message: (error as Error).message } });
-      else res.end();
+      if (res.headersSent) res.end();
+      else if (error instanceof BrainyardError) sendError(res, error);
+      else send(res, 500, { error: { kind: 'failed', message: (error as Error).message } });
     });
   });
 
@@ -86,13 +87,14 @@ export async function serve(options: ServeOptions = {}): Promise<Dashboard> {
     res.setHeader('Referrer-Policy', 'no-referrer');
 
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+      const { html, scriptHash } = page(VERSION);
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
-        'Content-Security-Policy':
-          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        // Only the page's own script runs: anything injected would not match the hash.
+        'Content-Security-Policy': `default-src 'none'; script-src '${scriptHash}'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
       });
-      res.end(page(VERSION));
+      res.end(html);
       return;
     }
     if (req.method === 'GET' && url.pathname === '/favicon.svg') {
@@ -392,7 +394,12 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
     chunks.push(chunk as Buffer);
   }
   if (chunks.length === 0) return {};
-  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw new BrainyardError('invalid_option', 'the request body is not valid JSON');
+  }
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
 }
 

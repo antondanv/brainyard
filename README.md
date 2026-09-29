@@ -122,7 +122,9 @@ Claude Code is working · type a message + Enter to steer, Ctrl+C to stop
 session 32a4caae-… · continue: brainyard run claude --resume 32a4caae-… "…"
 ```
 
-`--json` prints every event as a JSON line; `--quiet` prints only the answer.
+`--json` prints every event as a JSON line; `--quiet` prints only the answer. Like `codex exec`,
+`ask` and `run` read piped stdin and append it to the prompt; that waits for end of input, so a
+script that leaves stdin open should pass `--no-stdin`.
 
 | Command | What it does |
 |---|---|
@@ -281,7 +283,7 @@ fixes, is in [`docs/gotchas.md`](docs/gotchas.md).
 
 ## How it is tested
 
-- **139 tests** run the real code against fake `claude`, `codex` and `agy` executables that
+- **140 tests** run the real code against fake `claude`, `codex` and `agy` executables that
   speak each dialect. Like the real CLIs, the fakes never exit while stdin is open, so a runner
   that forgets to close it hangs the test instead of passing it.
 - **`npm run live`** runs every check against the real CLIs with the cheapest models: ask, a

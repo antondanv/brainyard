@@ -39,10 +39,11 @@ ${out.bold('Brains')}  claude (Claude Code) · codex (Codex) · antigravity (Ant
 ${out.bold('status')}   --live  --models  --json  --brain <id> (repeatable)  --reveal-account
 ${out.bold('models')}   --json  --refresh
 ${out.bold('ask')}      --model <m>  --effort <e>  --system <text>  --web  --access <full|workspace|readonly>
-         --timeout <sec>  --json            prompt "-" or no prompt reads stdin
+         --timeout <sec>  --json  --no-stdin
+         piped stdin is read and appended to the prompt; a prompt of "-" means stdin only
 ${out.bold('run')}      --cwd <dir>  --model <m>  --effort <e>  --resume <session>
          --access <full|workspace|readonly>  --no-web  --no-shell  --mcp <servers.json>
-         --timeout <sec>  --json  --raw  --verbose  --quiet  --no-nudge  --no-steer
+         --timeout <sec>  --json  --raw  --verbose  --quiet  --no-nudge  --no-steer  --no-stdin
 ${out.bold('ui')}       --port <n> (4747)  --host <addr> (127.0.0.1)  --token <t>  --no-open
 
 ${out.bold('Examples')}
@@ -124,11 +125,15 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-/** Prompt from arguments; `-` or none reads stdin; piped stdin plus a prompt become one. */
-async function promptFrom(words: string[]): Promise<string> {
+/**
+ * Prompt from arguments; `-` or none reads stdin; piped stdin plus a prompt
+ * become one (as with `codex exec`). Reading stdin waits for EOF, so a script
+ * that leaves stdin open should pass `--no-stdin`.
+ */
+async function promptFrom(words: string[], useStdin = true): Promise<string> {
   const joined = words.join(' ').trim();
   if (joined === '-') return (await readStdin()).trim();
-  const piped = process.stdin.isTTY ? '' : (await readStdin()).trim();
+  const piped = !useStdin || process.stdin.isTTY ? '' : (await readStdin()).trim();
   if (joined && piped) return `${joined}\n\n${piped}`;
   return joined || piped;
 }
@@ -268,10 +273,11 @@ async function askCommand(args: string[]): Promise<number> {
     access: { type: 'string' },
     timeout: { type: 'string' },
     json: { type: 'boolean' },
+    'no-stdin': { type: 'boolean' },
   });
   const [target, ...words] = positionals;
   if (!target) throw new UsageError('usage: brainyard ask <brain|all> <prompt>');
-  const prompt = await promptFrom(words);
+  const prompt = await promptFrom(words, !values['no-stdin']);
   if (!prompt) throw new UsageError('the prompt is empty: pass it as arguments or pipe it in');
   const access = accessArg(values.access);
   const timeoutMs = secondsArg(values.timeout);
@@ -377,10 +383,11 @@ async function runCommand(args: string[]): Promise<number> {
     quiet: { type: 'boolean', short: 'q' },
     'no-nudge': { type: 'boolean' },
     'no-steer': { type: 'boolean' },
+    'no-stdin': { type: 'boolean' },
   });
   const [target, ...words] = positionals;
   const brain = brainArg(target);
-  const prompt = await promptFrom(words);
+  const prompt = await promptFrom(words, !values['no-stdin']);
   if (!prompt) throw new UsageError('the prompt is empty: pass it as arguments or pipe it in');
   const access = accessArg(values.access);
   const timeoutMs = secondsArg(values.timeout);
