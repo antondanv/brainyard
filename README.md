@@ -283,7 +283,7 @@ fixes, is in [`docs/gotchas.md`](docs/gotchas.md).
 
 ## How it is tested
 
-- **140 tests** run the real code against fake `claude`, `codex` and `agy` executables that
+- **143 tests** run the real code against fake `claude`, `codex` and `agy` executables that
   speak each dialect. Like the real CLIs, the fakes never exit while stdin is open, so a runner
   that forgets to close it hangs the test instead of passing it.
 - **`npm run live`** runs every check against the real CLIs with the cheapest models: ask, a

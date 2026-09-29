@@ -142,6 +142,20 @@ class Run implements AgentRun {
 
   async #execute(): Promise<RunResult> {
     const started = Date.now();
+    // Listen before anything else: a signal that fires while options are
+    // being checked must stop the run before a process exists.
+    const signal = this.#options.signal;
+    const onAbort = () => this.stop(signal?.reason instanceof Error ? signal.reason.message : 'aborted');
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      return await this.#launch(started, signal);
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+    }
+  }
+
+  async #launch(started: number, signal: AbortSignal | undefined): Promise<RunResult> {
+    if (signal?.aborted) this.stop(signal.reason instanceof Error ? signal.reason.message : 'aborted');
     let resolved: Resolved;
     let plan: LaunchPlan;
     try {
@@ -211,10 +225,6 @@ class Run implements AgentRun {
       timeoutMs && timeoutMs > 0
         ? setTimeout(() => this.#halt('timeout', `timed out after ${Math.round(timeoutMs / 1000)}s`), timeoutMs)
         : undefined;
-    const signal = this.#options.signal;
-    const onAbort = () => this.stop(signal?.reason instanceof Error ? signal.reason.message : 'aborted');
-    signal?.addEventListener('abort', onAbort, { once: true });
-    if (signal?.aborted) onAbort();
 
     if (child.stdout) {
       const lines = createInterface({ input: child.stdout, crlfDelay: Number.POSITIVE_INFINITY });
@@ -223,7 +233,6 @@ class Run implements AgentRun {
     const { code, signal: killedBy, spawnError } = await exit;
 
     if (timer) clearTimeout(timer);
-    signal?.removeEventListener('abort', onAbort);
     this.#inputOpen = false;
     try {
       plan.cleanup?.();

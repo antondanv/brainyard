@@ -17,6 +17,7 @@ import type { Access, BrainId, McpServer, RunOptions } from './types.js';
 
 const ACCESS: readonly Access[] = ['full', 'workspace', 'readonly'];
 const SERVER_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export interface Mode {
   /** `ask`: a one-shot answer — isolated from the project and the user's setup. */
@@ -113,7 +114,12 @@ export async function resolveLaunch(options: RunOptions, mode: Mode): Promise<Re
   };
   if (model) launch.model = model;
   if (effort) launch.effort = effort;
-  if (options.resume?.trim()) launch.resume = options.resume.trim();
+  const resume = options.resume?.trim();
+  if (resume) {
+    // A session id goes on the command line: one that starts with a dash would be read as a flag.
+    if (!SESSION_ID.test(resume)) throw invalid(`"${resume}" does not look like a session id`);
+    launch.resume = resume;
+  }
   if (mode.system?.trim()) launch.system = mode.system;
   return { brain, command, launch, warnings };
 }

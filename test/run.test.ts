@@ -220,6 +220,23 @@ describe('run() with Claude Code', () => {
     expect(aborted.error).toMatchObject({ kind: 'stopped', message: 'stopped: user left' });
   });
 
+  it('does not start a process when the signal is already aborted', async () => {
+    const calls = recording();
+    const controller = new AbortController();
+    controller.abort(new Error('never mind'));
+    const result = await run({
+      brain: 'claude',
+      prompt: 'x',
+      cwd: tempDir(),
+      command: FAKE.claude,
+      env: { FAKE_RECORD: calls.path },
+      signal: controller.signal,
+    });
+    expect(result.error).toMatchObject({ kind: 'stopped', message: 'stopped: never mind' });
+    expect(result.exitCode).toBeNull();
+    expect(() => calls.read()).toThrow(/did not record/);
+  });
+
   it('keeps going when an event listener throws', async () => {
     const seen: AgentEvent[] = [];
     const result = await run({
@@ -369,6 +386,12 @@ describe('run() refusals before anything starts', () => {
       kind: 'not_installed',
       fix: expect.stringContaining('npm install -g @openai/codex'),
     });
+  });
+
+  it('refuses a session id that would be read as a flag', async () => {
+    await expect(run({ brain: 'codex', prompt: 'x', resume: '--help', command: FAKE.codex })).rejects.toThrow(
+      /session id/,
+    );
   });
 
   it('rejects a bad effort before spending anything', async () => {

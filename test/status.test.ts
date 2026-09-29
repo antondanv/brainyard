@@ -40,6 +40,14 @@ describe('status()', () => {
     expect(agy?.availability).toBe('needs_login');
   });
 
+  it('does not call a CLI signed out when an API key is in the environment', async () => {
+    vi.stubEnv('FAKE_AUTH', 'out');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test');
+    const claude = await checkBrain('claude', { commands: FAKE });
+    expect(claude.availability).toBe('unknown');
+    expect(claude.auth.detail).toMatch(/ANTHROPIC_API_KEY/);
+  });
+
   it('knows a missing CLI and how to install it', async () => {
     const codex = await checkBrain('codex', { commands: { codex: 'no-such-binary-brainyard' } });
     expect(codex).toMatchObject({ availability: 'not_installed', installed: false });

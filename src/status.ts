@@ -263,7 +263,12 @@ async function claudeAuth(command: Command, reveal: boolean): Promise<AuthInfo> 
     if (/not (logged|signed) in|log ?in required/i.test(words)) return { state: 'logged_out' };
     return { state: 'unknown', detail: '`claude auth status` gave no answer this version understands' };
   }
-  if (data.loggedIn !== true) return { state: 'logged_out' };
+  if (data.loggedIn !== true) {
+    // An API key in the environment works without a login the CLI would report.
+    return process.env.ANTHROPIC_API_KEY
+      ? { state: 'unknown', detail: 'ANTHROPIC_API_KEY is set; confirm with a live check' }
+      : { state: 'logged_out' };
+  }
   const auth: AuthInfo = { state: 'logged_in' };
   if (typeof data.authMethod === 'string') auth.method = data.authMethod;
   if (typeof data.subscriptionType === 'string' && data.subscriptionType) auth.plan = data.subscriptionType;
@@ -274,7 +279,11 @@ async function claudeAuth(command: Command, reveal: boolean): Promise<AuthInfo> 
 async function codexAuth(command: Command): Promise<AuthInfo> {
   const got = await capture(command, ['login', 'status'], { timeoutMs: AUTH_TIMEOUT_MS });
   const text = `${got.stdout}\n${got.stderr}`;
-  if (/not logged in/i.test(text)) return { state: 'logged_out' };
+  if (/not logged in/i.test(text)) {
+    return process.env.OPENAI_API_KEY
+      ? { state: 'unknown', detail: 'OPENAI_API_KEY is set; confirm with a live check' }
+      : { state: 'logged_out' };
+  }
   const match = /logged in using (?:an? )?([^\n-]+?)(?:\s+-|\n|$)/i.exec(text);
   if (got.code === 0 && match) {
     const method = match[1]?.trim();
