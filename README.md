@@ -253,9 +253,14 @@ in `result.warnings`.
 
 ## Dashboard and HTTP API
 
-`brainyard ui` serves the dashboard shown at the top: status cards (with a live check) and a
-playground to ask questions or run agents with a live feed, hints, stop and "continue this
-session". It uses a small HTTP API you can call from any language:
+`brainyard ui` serves the dashboard shown at the top: status cards and a playground to ask
+questions or run agents with a live feed, hints, stop and "continue this session". **Live
+check** sends each CLI a one-word prompt and shows how much of Claude Code's subscription
+windows is used:
+
+<img src="docs/assets/live-check.png" width="860" alt="Live check: each CLI answered pong; Claude Code also shows its 5-hour and 7-day subscription windows">
+
+The dashboard uses a small HTTP API you can call from any language:
 [`docs/http-api.md`](docs/http-api.md).
 
 The API can start agents on your machine, so it is guarded like it: it listens on `127.0.0.1`,
@@ -283,12 +288,12 @@ fixes, is in [`docs/gotchas.md`](docs/gotchas.md).
 
 ## How it is tested
 
-- **143 tests** run the real code against fake `claude`, `codex` and `agy` executables that
+- **144 tests** run the real code against fake `claude`, `codex` and `agy` executables that
   speak each dialect. Like the real CLIs, the fakes never exit while stdin is open, so a runner
   that forgets to close it hangs the test instead of passing it.
 - **`npm run live`** runs every check against the real CLIs with the cheapest models: ask, a
   prompt starting with dashes, an agent run, a hint, resume, MCP, and the access matrix. Last
-  run: Claude Code 2.1.280, Codex 0.153.4, Antigravity 1.2.13, all 21 checks passed for $0.20.
+  run: Claude Code 2.1.280, Codex 0.153.4, Antigravity 1.2.13, all 21 checks passed for about $0.20.
 
 ## FAQ
 
