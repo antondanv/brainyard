@@ -164,6 +164,7 @@ textarea:focus, select:focus, input:focus { outline: 2px solid color-mix(in srgb
 .stats { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); align-items: center; }
 .stats b { color: var(--text); font-weight: 600; }
 .stats .grow { flex: 1; }
+.stats .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 12px; }
 .banner { background: color-mix(in srgb, var(--yellow) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--yellow) 45%, var(--border)); border-radius: var(--radius); padding: 12px 14px; margin: 6px 0 14px; }
 .banner.error { background: color-mix(in srgb, var(--red) 12%, var(--panel)); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
 .empty { color: var(--muted); font-size: 13px; padding: 4px 2px; }
@@ -542,7 +543,9 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
     function finish(result) {
       if (result.text?.trim()) view.node.append(h('div', { class: 'answer' }, result.text.trim()));
       else if (!result.ok && result.error) view.node.append(h('div', { class: 'answer error' }, `${result.error.kind}: ${result.error.message}`));
-      const row = h('div', { class: 'stats' }, stats(result), h('span', { class: 'grow' }), h('span', { title: created.cwd }, `folder: ${created.cwd}`));
+      const folder = created.cwd.split(/[\\/]/).filter(Boolean).pop() || created.cwd;
+      const copy = h('button', { class: 'link', type: 'button', title: created.cwd, onclick: (e) => { navigator.clipboard?.writeText(created.cwd); e.target.textContent = 'copied'; } }, 'copy path');
+      const row = h('div', { class: 'stats' }, stats(result), h('span', { class: 'grow' }), h('span', { title: created.cwd }, `folder …/${folder}`), copy);
       if (result.sessionId) {
         row.append(h('button', { class: 'btn', type: 'button', onclick: () => {
           state.mode = 'run'; state.resume = result.sessionId;
