@@ -128,3 +128,13 @@ describe('terminal feed', () => {
     expect(width(coloured)).toBe(2);
   });
 });
+
+describe('quoting for cmd.exe', () => {
+  it('quotes and caret-escapes arguments the way cross-spawn does', async () => {
+    const { quoteForCmd } = await import('../src/process.js');
+    expect(quoteForCmd('plain')).toBe('^"plain^"');
+    expect(quoteForCmd('a b&c')).toBe('^"a^ b^&c^"');
+    expect(quoteForCmd('say "hi"')).toBe('^"say^ \\^"hi\\^"^"');
+    expect(quoteForCmd('x', true)).toBe('^^^"x^^^"');
+  });
+});

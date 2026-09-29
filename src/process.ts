@@ -6,7 +6,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { accessSync, constants, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, extname, isAbsolute, join, resolve } from 'node:path';
+import { delimiter, extname, isAbsolute, join, normalize, resolve } from 'node:path';
 
 const WINDOWS = process.platform === 'win32';
 
@@ -133,7 +133,11 @@ export function spawnCommand(command: Command, args: readonly string[], options:
   const stdio: ['pipe' | 'ignore', 'pipe', 'pipe'] = [options.stdin, 'pipe', 'pipe'];
   let child: ChildProcess;
   if (command.shell) {
-    const line = [command.file, ...command.args, ...args].map((part) => quoteForCmd(part)).join(' ');
+    const double = NPM_SHIM.test(command.file);
+    const line = [
+      escapeCmdCommand(command.file),
+      ...[...command.args, ...args].map((part) => quoteForCmd(part, double)),
+    ].join(' ');
     child = spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"${line}"`], {
       cwd: options.cwd,
       env: options.env,
@@ -154,18 +158,22 @@ export function spawnCommand(command: Command, args: readonly string[], options:
   return child;
 }
 
+// Batch files go through `cmd.exe /d /s /c "…"`, quoted the way cross-spawn
+// (MIT) does it: the command gets its metacharacters caret-escaped, every
+// argument is quoted with backslashes before quotes doubled, and arguments to
+// an npm shim in node_modules/.bin are escaped twice, because the shim hands
+// them to cmd once more.
 const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
+const NPM_SHIM = /node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i;
 
-/**
- * Quoting for `cmd.exe /s /c "…"` calling a batch shim: backslashes before
- * quotes are doubled, the argument is quoted, and cmd metacharacters are
- * caret-escaped twice (once for cmd, once for the shim). The same recipe
- * cross-spawn (MIT) uses.
- */
-export function quoteForCmd(arg: string): string {
+function escapeCmdCommand(file: string): string {
+  return normalize(file).replace(CMD_META, '^$1');
+}
+
+export function quoteForCmd(arg: string, double = false): string {
   let out = arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, '$1$1');
-  out = `"${out}"`;
-  return out.replace(CMD_META, '^$1').replace(CMD_META, '^$1');
+  out = `"${out}"`.replace(CMD_META, '^$1');
+  return double ? out.replace(CMD_META, '^$1') : out;
 }
 
 /** Stops a child and everything it started. */
