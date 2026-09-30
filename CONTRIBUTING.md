@@ -60,6 +60,16 @@ scripts/
 3. A fake in `test/fixtures/`, and tests next to the existing ones.
 4. The checks in `scripts/live-check.ts` passing against the real CLI.
 
+## Releasing
+
+1. The new version in `package.json` (`npm version minor --no-git-tag-version`) and its
+   section in `CHANGELOG.md`, committed to `main`.
+2. A GitHub release for the tag `v<version>`, with that section as its notes.
+
+Publishing the release runs `.github/workflows/publish.yml`: the checks, the build and
+`npm publish` through trusted publishing, with provenance. A tag that does not match
+`package.json` stops it before anything is published.
+
 ## Commits and pull requests
 
 Small, focused pull requests are easiest to review. Describe what you changed and how you
