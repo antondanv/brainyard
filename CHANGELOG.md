@@ -4,14 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
-### Changed
-
-- The dashboard looks like a terminal: monospace throughout, boxes with their titles on the
-  border, and the run feed in the same marks and colours as `brainyard run`.
-
-## [0.1.0] - 2026-09-29
+## [0.1.0] - 2026-09-30
 
 First public release.
 
@@ -28,9 +21,8 @@ First public release.
 - Typed failures: `usage_limit` with the reset time, `rate_limited`, `not_logged_in`,
   `network`, `timeout`, `stopped`, `empty_answer`, `failed`.
 - The `brainyard` command: `status`, `models`, `ask`, `run`, `ui`.
-- A local dashboard with status cards and a playground, over a token-guarded HTTP API with
-  server-sent events.
+- A local dashboard that looks like a terminal, with status cards and a playground, over a
+  token-guarded HTTP API with server-sent events.
 - Tests against fake CLIs, and `npm run live` for checks against the real ones.
 
-[Unreleased]: https://github.com/antondanv/brainyard/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/antondanv/brainyard/releases/tag/v0.1.0
