@@ -256,9 +256,9 @@ in `result.warnings`.
 `brainyard ui` serves the dashboard shown at the top: status cards and a playground to ask
 questions or run agents with a live feed, hints, stop and "continue this session". **Live
 check** sends each CLI a one-word prompt and shows how much of Claude Code's subscription
-windows is used:
+windows is used, or why a CLI did not answer:
 
-<img src="docs/assets/live-check.png" width="860" alt="Live check: each CLI answered pong; Claude Code also shows its 5-hour and 7-day subscription windows">
+<img src="docs/assets/live-check.png" width="860" alt="Live check: Claude Code and Antigravity answered pong, Codex shows the error for a model its ChatGPT account cannot use; Claude Code also shows its 5-hour and 7-day subscription windows">
 
 The dashboard uses a small HTTP API you can call from any language:
 [`docs/http-api.md`](docs/http-api.md).

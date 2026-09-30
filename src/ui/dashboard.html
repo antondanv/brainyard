@@ -7,41 +7,47 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
 :root {
-  --bg: #0c0e12;
-  --panel: #14171d;
-  --panel-2: #1b1f27;
-  --border: #272c36;
-  --text: #e7e9ee;
-  --muted: #8c94a3;
-  --faint: #5d6574;
+  --bg: #0b0d11;
+  --raise: #12151b;
+  --hover: #1b2029;
+  --line: #2a2f3a;
+  --text: #d4d8e1;
+  --bright: #f5f7fa;
+  --muted: #858d9c;
+  --faint: #5b6372;
   --accent: #7d8cff;
-  --accent-ink: #0c0e12;
-  --green: #3ecf8e;
-  --yellow: #f2c14e;
+  --accent-ink: #0b0d11;
+  --green: #5ad08a;
+  --yellow: #e6c46e;
   --red: #ff6b6b;
+  --blue: #6ea8ff;
+  --magenta: #c792ea;
+  --cyan: #5ccfe0;
   --gray: #6b7280;
-  --claude: #d9825b;
+  --claude: #e08a5f;
   --codex: #4fbf9f;
   --antigravity: #6ea8ff;
-  --radius: 12px;
-  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
   color-scheme: dark;
 }
 :root[data-theme="light"] {
-  --bg: #f6f7f9;
-  --panel: #ffffff;
-  --panel-2: #f0f2f5;
-  --border: #e1e4ea;
-  --text: #151820;
-  --muted: #5d6675;
-  --faint: #9aa2b1;
+  --bg: #fbfaf7;
+  --raise: #f3f1eb;
+  --hover: #e9e6de;
+  --line: #d8d4c9;
+  --text: #25282e;
+  --bright: #0d0f12;
+  --muted: #6b6f78;
+  --faint: #9d9b95;
   --accent: #4452e0;
   --accent-ink: #ffffff;
-  --green: #15935c;
-  --yellow: #b7791f;
-  --red: #d63b3b;
-  --gray: #8a93a3;
+  --green: #17804a;
+  --yellow: #9a6a00;
+  --red: #cc3b36;
+  --blue: #2f6fdc;
+  --magenta: #8b4fd1;
+  --cyan: #137f8b;
+  --gray: #8a8f99;
   --claude: #c0643c;
   --codex: #178a6c;
   --antigravity: #2f6fdc;
@@ -51,130 +57,196 @@
 /* biome-ignore lint/complexity/noImportantStyles: the hidden attribute must beat every display rule */
 [hidden] { display: none !important; }
 html, body { margin: 0; }
-body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+body { background: var(--bg); color: var(--text); font: 13px/1.6 var(--mono); font-variant-ligatures: none; -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; color: inherit; }
 a { color: var(--accent); }
-.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px 64px; }
+::selection { background: color-mix(in srgb, var(--accent) 38%, transparent); }
+::placeholder { color: var(--faint); opacity: 1; }
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px 40px; }
+.grow { flex: 1; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-header { display: flex; align-items: center; gap: 12px; padding: 22px 0 18px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 18px; letter-spacing: -.01em; }
-.brand svg { width: 28px; height: 28px; }
-.brand .ver { font: 12px var(--mono); color: var(--muted); font-weight: 400; }
-header .grow { flex: 1; }
-.btn { background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; padding: 7px 12px; cursor: pointer; transition: border-color .15s, background .15s; white-space: nowrap; }
-.btn:hover { border-color: var(--faint); }
-.btn:disabled { opacity: .5; cursor: default; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+/* ----- chrome: header, buttons, prompt-line headings --------------------- */
+header { display: flex; align-items: center; gap: 6px; padding: 16px 0 12px; border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: baseline; gap: 1ch; font-weight: 700; color: var(--bright); }
+.logo { color: var(--accent); }
+.logo span:nth-child(2) { opacity: .75; }
+.logo span:nth-child(3) { opacity: .5; }
+.brand .ver { color: var(--muted); font-weight: 400; }
+.btn { background: none; border: 0; border-radius: 3px; padding: 1px 4px; cursor: pointer; white-space: nowrap; color: var(--text); }
+.btn::before { content: "[ "; color: var(--faint); }
+.btn::after { content: " ]"; color: var(--faint); }
+.btn:hover:not(:disabled) { background: var(--hover); color: var(--bright); }
+.btn:active:not(:disabled) { background: var(--text); color: var(--bg); }
+.btn:disabled { color: var(--faint); cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 2px 14px; }
+.btn.primary::before, .btn.primary::after { content: none; }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 82%, var(--bright)); color: var(--accent-ink); }
 .btn.danger { color: var(--red); }
-.btn.icon { padding: 7px 10px; }
 
-.summary { display: flex; align-items: baseline; gap: 10px; color: var(--muted); margin: 4px 0 14px; min-height: 22px; }
-.summary strong { color: var(--text); font-size: 15px; }
+h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 1ch; margin: 36px 0 4px; font-size: inherit; font-weight: 700; color: var(--bright); }
+header + h2 { margin-top: 24px; }
+h2 .ps1 { color: var(--accent); }
+h2 small { font-size: inherit; font-weight: 400; color: var(--faint); }
+.summary { color: var(--muted); min-height: 1.6em; }
+.summary strong { color: var(--bright); }
+.busy { color: var(--muted); }
+.busy::before { content: "⠋"; display: inline-block; width: 2ch; color: var(--accent); animation: spin .8s step-end infinite; }
+@keyframes spin {
+  0% { content: "⠋"; }
+  10% { content: "⠙"; }
+  20% { content: "⠹"; }
+  30% { content: "⠸"; }
+  40% { content: "⠼"; }
+  50% { content: "⠴"; }
+  60% { content: "⠦"; }
+  70% { content: "⠧"; }
+  80% { content: "⠇"; }
+  90% { content: "⠏"; }
+}
+@keyframes blink { 50% { opacity: 0; } }
+.banner { border: 1px solid color-mix(in srgb, var(--yellow) 50%, var(--line)); border-radius: 6px; color: var(--yellow); padding: 8px 12px; margin: 8px 0 4px; }
+.banner::before { content: "! "; }
+.banner.error { border-color: color-mix(in srgb, var(--red) 50%, var(--line)); color: var(--red); }
+.banner.error::before { content: "✗ "; }
 
-.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+/* ----- panels: a box with its title on the top border, like a TUI -------- */
+.panel { position: relative; border: 1px solid var(--line); border-radius: 6px; }
+.legend { position: absolute; top: 0; left: 10px; right: 10px; transform: translateY(-50%); display: flex; align-items: center; line-height: 1.3; white-space: nowrap; }
+.legend > * { background: var(--bg); padding: 0 1ch; }
+.legend > * + * { margin-left: 1ch; }
+.legend > .grow { background: none; padding: 0; min-width: 1ch; }
+[data-brain="claude"] { --brand: var(--claude); }
+[data-brain="codex"] { --brand: var(--codex); }
+[data-brain="antigravity"] { --brand: var(--antigravity); }
+
+/* ----- status cards ------------------------------------------------------ */
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px 16px; margin-top: 20px; }
 @media (max-width: 900px) { .cards { grid-template-columns: 1fr; } }
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 16px 14px; display: flex; flex-direction: column; gap: 10px; position: relative; overflow: hidden; }
-.card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--brand, var(--accent)); opacity: .85; }
-.card[data-brain="claude"] { --brand: var(--claude); }
-.card[data-brain="codex"] { --brand: var(--codex); }
-.card[data-brain="antigravity"] { --brand: var(--antigravity); }
-.card-head { display: flex; align-items: center; gap: 10px; }
-.mono { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; font-weight: 700; background: color-mix(in srgb, var(--brand) 18%, transparent); color: var(--brand); flex: none; }
-.card h3 { margin: 0; font-size: 15px; font-weight: 650; }
-.card .vendor { color: var(--muted); font-size: 12px; }
-.badge { margin-left: auto; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.cards[aria-busy="true"] > .card { opacity: .55; }
+.card { display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 12px; border-color: color-mix(in srgb, var(--brand, var(--line)) 45%, var(--line)); transition: opacity .2s; }
+.card h3 { margin: 0; font-size: inherit; font-weight: 700; color: var(--brand, var(--bright)); }
+.vendor { color: var(--muted); }
+.badge { flex: none; }
+.badge::before { content: "● "; }
 .s-ready .badge { color: var(--green); }
 .s-needs_login .badge, .s-limited .badge, .s-unknown .badge { color: var(--yellow); }
 .s-error .badge { color: var(--red); }
 .s-not_installed .badge { color: var(--gray); }
-.s-not_installed { opacity: .82; }
-.kv { display: grid; grid-template-columns: 74px 1fr; gap: 3px 10px; font-size: 13px; }
+.card.s-not_installed { border-color: var(--line); opacity: .72; }
+.kv { display: grid; grid-template-columns: 8ch minmax(0, 1fr); gap: 0 1ch; margin: 0; }
 .kv dt { color: var(--muted); }
-.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.kv code { font: 12px var(--mono); color: var(--muted); }
-.caps { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.caps li { font-size: 11.5px; padding: 2px 8px; border-radius: 6px; background: var(--panel-2); color: var(--faint); border: 1px solid var(--border); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.kv code { font: inherit; color: var(--muted); }
+.ping { color: var(--muted); overflow-wrap: anywhere; }
+.ping b { color: var(--bright); font-weight: 400; }
+.bar { display: flex; gap: 1ch; color: var(--muted); white-space: nowrap; }
+.bar .label { min-width: 10ch; }
+.meter { color: var(--faint); overflow: hidden; }
+.meter .fill { color: var(--green); }
+.meter .fill.warn { color: var(--yellow); }
+.meter .fill.full { color: var(--red); }
+.caps { display: flex; flex-wrap: wrap; gap: 0 2ch; margin: 0; padding: 0; list-style: none; color: var(--faint); }
+.caps li::before { content: "·"; display: inline-block; width: 2ch; }
 .caps li.on { color: var(--text); }
-.caps li.on::before { content: "✓ "; color: var(--green); }
-.fix { display: flex; gap: 8px; align-items: flex-start; background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; font: 12px/1.45 var(--mono); }
-.fix span { flex: 1; overflow-wrap: anywhere; }
-.fix button { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font: 12px var(--sans); }
-.ping { font-size: 13px; color: var(--muted); }
-.ping b { color: var(--text); font-weight: 600; }
-.bars { display: grid; gap: 6px; }
-.bar { display: grid; grid-template-columns: 64px 1fr 38px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
-.bar .track { height: 6px; background: var(--panel-2); border-radius: 99px; overflow: hidden; border: 1px solid var(--border); }
-.bar .fill { height: 100%; background: var(--green); border-radius: 99px; }
-.bar .fill.warn { background: var(--yellow); }
-.bar .fill.full { background: var(--red); }
-details.models summary { cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; }
+.caps li.on::before { content: "✓"; color: var(--green); }
+details.models summary { width: fit-content; cursor: pointer; color: var(--muted); list-style: none; }
 details.models summary::-webkit-details-marker { display: none; }
 details.models summary::before { content: "▸ "; }
 details.models[open] summary::before { content: "▾ "; }
-details.models table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12.5px; }
-details.models td { padding: 3px 0; border-top: 1px solid var(--border); vertical-align: top; }
-details.models td:first-child { font-family: var(--mono); font-size: 12px; padding-right: 10px; white-space: nowrap; }
+details.models summary:hover { color: var(--text); }
+details.models table { width: 100%; border-collapse: collapse; margin-top: 2px; }
+details.models td { padding: 0; vertical-align: top; }
+details.models td:first-child { white-space: nowrap; padding-right: 2ch; }
+details.models td:first-child::before { content: "├─ "; color: var(--faint); }
+details.models tr:last-child td:first-child::before { content: "└─ "; }
 details.models td:last-child { color: var(--muted); }
-.skeleton { height: 214px; background: linear-gradient(90deg, var(--panel) 0%, var(--panel-2) 50%, var(--panel) 100%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: var(--radius); border: 1px solid var(--border); }
-@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.fix { display: flex; gap: 1ch; align-items: flex-start; }
+.fix::before { content: "→"; color: var(--yellow); }
+.fix span { flex: 1; overflow-wrap: anywhere; }
+.fix button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; }
+.skeleton { min-height: 15.5em; padding: 14px 16px; border-style: dashed; }
 
-h2 { font-size: 15px; margin: 34px 0 12px; font-weight: 650; display: flex; align-items: baseline; gap: 10px; }
-h2 small { font-weight: 400; color: var(--muted); font-size: 13px; }
-.play { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; }
-.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
-.field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-.field select, .field input[type=text] { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; min-width: 130px; color: var(--text); }
-.field.wide { flex: 1; min-width: 220px; }
-.field.wide input { width: 100%; }
-.seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; padding: 2px; margin: 0; min-inline-size: 0; }
-.seg button { background: none; border: 0; padding: 5px 12px; border-radius: 7px; cursor: pointer; color: var(--muted); }
-.seg button[aria-pressed="true"] { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--border); }
-.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); padding-bottom: 7px; cursor: pointer; }
-textarea { width: 100%; min-height: 96px; resize: vertical; background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; color: var(--text); line-height: 1.5; }
-textarea:focus, select:focus, input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
-.submit-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.submit-row .note { color: var(--muted); font-size: 12px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
-.chip button { background: none; border: 0; color: inherit; cursor: pointer; padding: 0; }
+/* ----- playground -------------------------------------------------------- */
+.play { display: grid; gap: 12px; margin-top: 10px; padding: 14px 16px 16px; transition: border-color .15s; }
+.play:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 3ch; }
+.field { display: inline-flex; align-items: center; gap: 1ch; color: var(--muted); }
+.select { position: relative; display: inline-flex; min-width: 0; }
+.select::after { content: "▾"; position: absolute; right: 1ch; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+select, input[type="text"], textarea { background: var(--raise); border: 1px solid var(--line); border-radius: 4px; color: var(--text); }
+select { appearance: none; max-width: 100%; padding: 2px 3ch 2px 1ch; cursor: pointer; text-overflow: ellipsis; }
+select:disabled { color: var(--faint); cursor: default; }
+input[type="text"] { padding: 2px 1ch; }
+select:focus, input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--accent); }
+.seg { display: inline-flex; margin: 0; padding: 0; min-inline-size: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg button { background: none; border: 0; padding: 2px 1.5ch; cursor: pointer; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button:hover { color: var(--text); }
+.seg button:focus-visible { outline-offset: -3px; }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.check { position: relative; display: inline-flex; align-items: center; gap: 1ch; cursor: pointer; }
+.check input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+.tick::before { content: "[ ]"; color: var(--muted); white-space: pre; }
+.check:hover .tick::before { color: var(--text); }
+.check input:checked + .tick::before { content: "[x]"; color: var(--green); }
+.check input:focus-visible + .tick { outline: 1px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.field.wide { display: flex; }
+.field.wide input { flex: 1; min-width: 0; }
+textarea { display: block; width: 100%; min-height: 7em; resize: vertical; padding: 8px 1.5ch; line-height: 1.6; caret-color: var(--accent); }
+.submit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 2ch; }
+.note { color: var(--faint); }
+.chip { display: inline-flex; align-items: center; gap: 1ch; padding: 0 1ch; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 3px; color: var(--accent); }
+.chip button { background: none; border: 0; padding: 0; color: inherit; cursor: pointer; }
 
-.session { display: grid; gap: 10px; }
-.run { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.run-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
-.run-head .title { font-weight: 600; }
-.run-head .prompt { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.run-head .clock { font: 12px var(--mono); color: var(--muted); }
-.feed { list-style: none; margin: 0; padding: 8px 0; max-height: 420px; overflow: auto; font: 12.5px/1.55 var(--mono); }
-.feed li { display: grid; grid-template-columns: 44px 18px 1fr; gap: 6px; padding: 1px 14px; }
-.feed .t { color: var(--faint); }
-.feed .m { text-align: center; color: var(--faint); }
+/* ----- session: one panel per ask or run --------------------------------- */
+.session { display: grid; gap: 28px; margin-top: 20px; }
+.run { padding-top: 12px; transition: border-color .2s; }
+.run.live { border-color: color-mix(in srgb, var(--brand, var(--accent)) 60%, var(--line)); }
+.run-head .title { flex: none; font-weight: 700; color: var(--brand, var(--bright)); }
+.run-head .prompt { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.run-head .clock { flex: none; color: var(--muted); }
+.run-head .btn { flex: none; }
+.feed { list-style: none; margin: 0; padding: 4px 0 10px; max-height: 420px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.feed li { display: grid; grid-template-columns: 6ch 2ch minmax(0, 1fr); column-gap: 1ch; padding: 0 16px; }
+.feed .t { color: var(--faint); text-align: right; }
+.feed .m { color: var(--gray); text-align: center; }
 .feed .s { overflow-wrap: anywhere; white-space: pre-wrap; }
-.k-message .s { color: var(--text); font-family: var(--sans); font-size: 13px; }
-.k-message .m { color: var(--accent); }
-.k-init .s, .k-init .m { color: var(--antigravity); }
-.k-hint .s, .k-hint .m { color: var(--claude); }
+.run.live .feed::after { content: ""; display: block; width: 1ch; height: 1.3em; margin: 2px 0 0 calc(16px + 10ch); background: var(--accent); animation: blink 1s step-end infinite; }
+.k-message .m { color: var(--cyan); }
+.k-init .s, .k-init .m { color: var(--blue); }
+.k-hint .s, .k-hint .m { color: var(--magenta); }
 .k-warning .s, .k-warning .m { color: var(--yellow); }
+.k-thinking .s, .k-thinking .m, .k-tool_result .s, .k-tool_result .m { color: var(--muted); }
 .k-error .s, .k-error .m, .k-denied .s, .k-denied .m, .k-stopped .s, .k-stopped .m, .is-error .s, .is-error .m { color: var(--red); }
 .k-done .s, .k-done .m { color: var(--green); }
 .k-done.failed .s, .k-done.failed .m { color: var(--red); }
-.k-thinking .s, .k-tool_result .s { color: var(--muted); }
-.steer { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
-.steer input { flex: 1; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
-.answer { padding: 14px; border-top: 1px solid var(--border); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.steer { display: flex; align-items: center; gap: 1ch; padding: 8px 16px; border-top: 1px dashed var(--line); }
+.steer::before { content: "☞"; color: var(--magenta); }
+.steer input { flex: 1; min-width: 0; }
+.answer { padding: 10px 16px 12px; border-top: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--bright); }
+.run-head + .answer { border-top: 0; }
 .answer.error { color: var(--red); }
-.stats { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); align-items: center; }
-.stats b { color: var(--text); font-weight: 600; }
-.stats .grow { flex: 1; }
-.stats .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 12px; }
-.banner { background: color-mix(in srgb, var(--yellow) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--yellow) 45%, var(--border)); border-radius: var(--radius); padding: 12px 14px; margin: 6px 0 14px; }
-.banner.error { background: color-mix(in srgb, var(--red) 12%, var(--panel)); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
-.empty { color: var(--muted); font-size: 13px; padding: 4px 2px; }
-footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: center; }
-.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.stats { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 2ch; padding: 5px 16px; border-top: 1px solid var(--line); border-radius: 0 0 5px 5px; background: var(--raise); color: var(--muted); }
+.stats b { color: var(--bright); }
+.stats .where { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 2ch; margin-left: auto; }
+.stats .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; }
+.stats .link:hover { text-decoration: underline; }
+footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--faint); }
 @media (max-width: 560px) {
-  .wrap { padding: 0 14px 48px; }
+  .wrap { padding: 0 14px 32px; }
   header { flex-wrap: wrap; }
-  .field select, .field input[type=text] { min-width: 0; width: 100%; }
-  .field { flex: 1 1 140px; }
+  header .brand { flex: 1 1 100%; }
+  header .grow { display: none; }
+  .controls { gap: 8px 2ch; }
+  .field:not(.check) { flex: 1 1 100%; }
+  .field > span:first-child { min-width: 7ch; }
+  .field .select { flex: 1; }
+  .field select { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .busy::before, .run.live .feed::after { animation: none; }
 }
 </style>
 </head>
@@ -182,55 +254,58 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
 <div class="wrap">
   <header>
     <div class="brand">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><circle cx="9" cy="16" r="3.2" fill="var(--accent-ink)"/><circle cx="16" cy="16" r="3.2" fill="var(--accent-ink)" fill-opacity=".8"/><circle cx="23" cy="16" r="3.2" fill="var(--accent-ink)" fill-opacity=".6"/></svg>
-      Brainyard <span class="ver">{{VERSION}}</span>
+      <span class="logo" aria-hidden="true"><span>●</span><span>●</span><span>●</span></span>
+      brainyard <span class="ver">{{VERSION}}</span>
     </div>
     <div class="grow"></div>
-    <button class="btn" id="refresh" type="button" title="Check again (free)">Refresh</button>
-    <button class="btn" id="live" type="button" title="One tiny real call per installed CLI — costs a fraction of a cent">Live check</button>
-    <button class="btn icon" id="theme" type="button" title="Switch theme" aria-label="Switch theme">◐</button>
+    <button class="btn" id="refresh" type="button" title="Check again (free)">refresh</button>
+    <button class="btn" id="live" type="button" title="One tiny real call per installed CLI — costs a fraction of a cent">live check</button>
+    <button class="btn" id="theme" type="button" title="Switch theme" aria-label="Switch theme">◐</button>
   </header>
 
+  <h2><span class="ps1" aria-hidden="true">❯</span> <span id="status-cmd">brainyard status</span></h2>
   <div id="banner"></div>
   <div class="summary" id="summary" aria-live="polite"></div>
   <section class="cards" id="cards" aria-label="Agent CLIs">
-    <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+    <div class="panel skeleton"><span class="busy">checking</span></div>
+    <div class="panel skeleton"><span class="busy">checking</span></div>
+    <div class="panel skeleton"><span class="busy">checking</span></div>
   </section>
 
-  <h2>Playground <small>ask a question, or give an agent a task and watch it work</small></h2>
-  <form class="play" id="form" autocomplete="off">
+  <h2><span class="ps1" aria-hidden="true">❯</span> <span id="play-cmd">brainyard ask</span> <small># ask a question, or give an agent a task and watch it work</small></h2>
+  <form class="play panel" id="form" autocomplete="off">
     <div class="controls">
-      <label class="field">Brain <select id="brain"></select></label>
-      <div class="field">Mode
+      <label class="field"><span>brain</span><span class="select"><select id="brain"></select></span></label>
+      <div class="field"><span>mode</span>
         <fieldset class="seg" aria-label="Mode">
-          <button type="button" data-mode="ask" aria-pressed="true">Ask</button>
-          <button type="button" data-mode="run" aria-pressed="false">Agent</button>
+          <button type="button" data-mode="ask" aria-pressed="true">ask</button>
+          <button type="button" data-mode="run" aria-pressed="false">agent</button>
         </fieldset>
       </div>
-      <label class="field">Model <select id="model"></select></label>
-      <label class="field">Effort <select id="effort"></select></label>
-      <label class="field" data-for="run">Access
+      <label class="field"><span>model</span><span class="select"><select id="model"></select></span></label>
+      <label class="field"><span>effort</span><span class="select"><select id="effort"></select></span></label>
+      <label class="field" data-for="run"><span>access</span><span class="select">
         <select id="access">
           <option value="workspace">workspace</option>
           <option value="readonly">read-only</option>
           <option value="full">full</option>
         </select>
-      </label>
-      <label class="check"><input type="checkbox" id="web"> Web</label>
+      </span></label>
+      <label class="field check"><input type="checkbox" id="web"><span class="tick" aria-hidden="true"></span>web</label>
     </div>
-    <label class="field wide" data-for="run">Folder <input type="text" id="cwd" placeholder="empty: a new temporary folder" spellcheck="false"></label>
+    <label class="field wide" data-for="run"><span>folder</span><input type="text" id="cwd" placeholder="empty: a new temporary folder" spellcheck="false"></label>
     <label class="sr" for="prompt">Prompt</label>
-    <textarea id="prompt" placeholder="Ask something, or give the agent a task…"></textarea>
+    <textarea id="prompt" placeholder="Ask something…"></textarea>
     <div class="submit-row">
-      <button class="btn primary" id="go" type="submit">Run</button>
+      <button class="btn primary" id="go" type="submit">ask</button>
       <span id="resume"></span>
       <span class="note" id="note">⌘/Ctrl + Enter</span>
     </div>
   </form>
 
-  <h2 id="session-title" hidden>This session</h2>
+  <h2 id="session-title" hidden><span class="ps1" aria-hidden="true">❯</span> history <small># this session</small></h2>
   <div class="session" id="session"></div>
-  <footer>Brainyard runs locally. The agents run on this machine, with your CLIs and your accounts.</footer>
+  <footer># Brainyard runs locally. The agents run on this machine, with your CLIs and your accounts.</footer>
 </div>
 
 <script>
@@ -252,7 +327,6 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
     }
     return node;
   };
-  const widthOf = (node, percent) => { node.style.width = `${percent}%`; return node; };
   const store = {
     get(key) { try { return localStorage.getItem(key); } catch { return null; } },
     set(key, value) { try { localStorage.setItem(key, value); } catch { /* private mode */ } },
@@ -301,10 +375,10 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
   // ----- status ------------------------------------------------------------
   const WORDS = { ready: 'ready', needs_login: 'sign in', limited: 'limited', unknown: 'unknown', not_installed: 'not installed', error: 'error' };
   const CAPS = [['steering', 'hints mid-run'], ['resume', 'resume'], ['mcp', 'MCP'], ['reportsCost', 'reports cost'], ['modelList', 'model list']];
+  const METER = 20;
   const state = { report: null, brains: {}, mode: 'ask', resume: null };
 
   function card(brain) {
-    const letter = brain.label.slice(0, 1);
     const how = [brain.auth.method, brain.auth.plan].filter(Boolean).join(', ');
     const rows = [];
     if (brain.installed) {
@@ -316,12 +390,13 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
       if (brain.defaultModel) rows.push(['model', `${brain.defaultModel} (default)`]);
       if (brain.path) rows.push(['binary', h('code', {}, brain.path)]);
     }
-    const node = h('article', { class: `card s-${brain.availability}`, dataset: { brain: brain.id } },
-      h('div', { class: 'card-head' },
-        h('div', { class: 'mono', 'aria-hidden': 'true' }, letter),
-        h('div', {}, h('h3', {}, brain.label), h('div', { class: 'vendor' }, `${brain.vendor} · ${brain.binary}`)),
+    const node = h('article', { class: `card panel s-${brain.availability}`, dataset: { brain: brain.id } },
+      h('div', { class: 'legend' },
+        h('h3', {}, brain.label),
+        h('span', { class: 'grow' }),
         h('span', { class: 'badge' }, WORDS[brain.availability] || brain.availability),
       ),
+      h('div', { class: 'vendor' }, `${brain.vendor} · ${brain.binary}`),
       rows.length ? h('dl', { class: 'kv' }, rows.map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])) : null,
     );
     if (brain.ping) {
@@ -335,10 +410,12 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
       if (windows.length) {
         node.append(h('div', { class: 'bars' }, windows.map((w) => {
           const pct = Math.round(w.utilization * 100);
+          const cells = Math.max(0, Math.min(METER, Math.round((pct / 100) * METER)));
           const resets = w.resetsAt ? ` · resets ${new Date(w.resetsAt * 1000).toLocaleString()}` : '';
           return h('div', { class: 'bar', title: `${w.window}: ${pct}% used${resets}` },
-            h('span', {}, w.window.replace('_', '-')),
-            h('div', { class: 'track' }, widthOf(h('div', { class: `fill ${pct >= 90 ? 'full' : pct >= 70 ? 'warn' : ''}` }), Math.min(100, pct))),
+            h('span', { class: 'label' }, w.window.replace('_', '-')),
+            h('span', { class: 'meter', 'aria-hidden': 'true' },
+              h('span', { class: `fill ${pct >= 90 ? 'full' : pct >= 70 ? 'warn' : ''}` }, '█'.repeat(cells)), '░'.repeat(METER - cells)),
             h('span', {}, `${pct}%`));
         })));
       }
@@ -363,7 +440,9 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
   async function loadStatus(live) {
     $('refresh').disabled = true;
     $('live').disabled = true;
-    $('summary').textContent = live ? 'Checking with a real call to each CLI…' : 'Checking…';
+    $('status-cmd').textContent = `brainyard status${live ? ' --live' : ''}`;
+    $('cards').setAttribute('aria-busy', 'true');
+    $('summary').replaceChildren(h('span', { class: 'busy' }, live ? 'checking with a real call to each CLI…' : 'checking…'));
     try {
       const report = await api(`/api/status${live ? '?live=1' : ''}`);
       state.report = report;
@@ -372,7 +451,7 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
       const at = new Date(report.checkedAt).toLocaleTimeString();
       $('summary').replaceChildren(
         h('strong', {}, `${report.ready.length} of ${report.brains.length} ready`),
-        h('span', {}, `checked ${at}${live ? ' with live calls' : ''} · Node ${report.node} · ${report.platform}`));
+        ` · checked ${at}${live ? ' with live calls' : ''} · node ${report.node} · ${report.platform}`);
       fillBrains();
       banner('');
     } catch (error) {
@@ -383,6 +462,7 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
     } finally {
       $('refresh').disabled = false;
       $('live').disabled = false;
+      $('cards').removeAttribute('aria-busy');
     }
   }
   $('refresh').addEventListener('click', () => loadStatus(false));
@@ -430,7 +510,8 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
     for (const button of document.querySelectorAll('.seg button')) button.setAttribute('aria-pressed', String(button.dataset.mode === state.mode));
     for (const node of document.querySelectorAll('[data-for="run"]')) node.hidden = state.mode !== 'run';
     $('prompt').placeholder = state.mode === 'run' ? 'Give the agent a task — it works in the folder above…' : 'Ask something…';
-    $('go').textContent = state.mode === 'run' ? 'Start agent' : 'Ask';
+    $('go').textContent = state.mode === 'run' ? 'start agent' : 'ask';
+    $('play-cmd').textContent = ['brainyard', state.mode, $('brain').value].filter(Boolean).join(' ');
   }
   for (const button of document.querySelectorAll('.seg button')) {
     button.addEventListener('click', () => { state.mode = button.dataset.mode; if (state.mode === 'ask') { state.resume = null; showResume(); } updateMode(); });
@@ -457,10 +538,10 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
     const started = Date.now();
     const clock = h('span', { class: 'clock' }, '0.0s');
     const timer = setInterval(() => { clock.textContent = `${((Date.now() - started) / 1000).toFixed(1)}s`; }, 100);
-    const head = h('div', { class: 'run-head' }, h('span', { class: 'title' }, labelOf(brainId)), h('span', { class: 'prompt', title: prompt }, prompt), clock);
-    const node = h('section', { class: 'run' }, head);
+    const head = h('div', { class: 'legend run-head' }, h('span', { class: 'title' }, labelOf(brainId)), h('span', { class: 'prompt', title: prompt }, prompt), h('span', { class: 'grow' }), clock);
+    const node = h('section', { class: 'run panel live', dataset: { brain: brainId } }, head);
     $('session').prepend(node);
-    return { node, head, started, clock, stopTimer: () => clearInterval(timer) };
+    return { node, head, started, clock, stopTimer: () => { clearInterval(timer); node.classList.remove('live'); } };
   }
 
   function stats(result) {
@@ -477,7 +558,7 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
 
   async function doAsk(body) {
     const view = panel(body.brain, body.prompt);
-    const answer = h('div', { class: 'answer' }, h('span', { class: 'note' }, 'Thinking…'));
+    const answer = h('div', { class: 'answer' }, h('span', { class: 'busy' }, 'thinking…'));
     view.node.append(answer);
     try {
       const result = await api('/api/ask', { method: 'POST', body });
@@ -503,7 +584,7 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
     }
     const view = panel(body.brain, body.prompt);
     const feed = h('ol', { class: 'feed', 'aria-live': 'polite' });
-    const stop = h('button', { class: 'btn danger', type: 'button', onclick: () => api(`/api/runs/${created.id}/stop`, { method: 'POST', body: {} }).catch(() => {}) }, 'Stop');
+    const stop = h('button', { class: 'btn danger', type: 'button', onclick: () => api(`/api/runs/${created.id}/stop`, { method: 'POST', body: {} }).catch(() => {}) }, 'stop');
     view.head.append(stop);
     view.node.append(feed);
     let steer = null;
@@ -516,7 +597,7 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
         await api(`/api/runs/${created.id}/hint`, { method: 'POST', body: { text } }).catch(() => {});
       };
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
-      steer = h('div', { class: 'steer' }, input, h('button', { class: 'btn', type: 'button', onclick: send }, 'Send'));
+      steer = h('div', { class: 'steer' }, input, h('button', { class: 'btn', type: 'button', onclick: send }, 'send'));
       view.node.append(steer);
     }
     const add = (event) => {
@@ -546,12 +627,13 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
       else if (!result.ok && result.error) view.node.append(h('div', { class: 'answer error' }, `${result.error.kind}: ${result.error.message}`));
       const folder = created.cwd.split(/[\\/]/).filter(Boolean).pop() || created.cwd;
       const copy = h('button', { class: 'link', type: 'button', title: created.cwd, onclick: (e) => { navigator.clipboard?.writeText(created.cwd); e.target.textContent = 'copied'; } }, 'copy path');
-      const row = h('div', { class: 'stats' }, stats(result), h('span', { class: 'grow' }), h('span', { title: created.cwd }, `folder …/${folder}`), copy);
+      const where = h('span', { class: 'where' }, h('span', { title: created.cwd }, `folder …/${folder}`), copy);
+      const row = h('div', { class: 'stats' }, stats(result), where);
       if (result.sessionId) {
-        row.append(h('button', { class: 'btn', type: 'button', onclick: () => {
+        where.append(h('button', { class: 'btn', type: 'button', onclick: () => {
           state.mode = 'run'; state.resume = result.sessionId;
           $('brain').value = body.brain; fillModels(); $('cwd').value = created.cwd; updateMode(); showResume(); $('prompt').focus();
-        } }, 'Continue'));
+        } }, 'continue'));
       }
       view.node.append(row);
     }
@@ -601,8 +683,10 @@ footer { color: var(--faint); font-size: 12px; margin-top: 40px; text-align: cen
   });
 
   updateMode();
-  if (!token) banner('This page needs the access token. Open the link printed in the terminal where you ran `brainyard ui`.', 'error');
-  else loadStatus(false);
+  if (!token) {
+    $('cards').replaceChildren();
+    banner('This page needs the access token. Open the link printed in the terminal where you ran `brainyard ui`.', 'error');
+  } else loadStatus(false);
 })();
 </script>
 </body>
