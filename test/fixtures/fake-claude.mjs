@@ -31,6 +31,28 @@ if (args[0] === 'agents') {
 // Without `-p` the real CLI is interactive: it owns the terminal until you
 // exit. The fake records how it was called and exits.
 if (!args.includes('-p') && args[0] !== 'auth') {
+  // In a pane: a tiny terminal program that shows what it was given and echoes keys.
+  if (process.env.FAKE_PANE === '1' && !args.includes('--bg')) {
+    console.log(`fake-claude ready ${JSON.stringify(args)}`);
+    const inherited = [
+      'CLAUDECODE',
+      'CLAUDE_CODE_CHILD_SESSION',
+      'CLAUDE_CODE_SESSION_ID',
+      'CLAUDE_CODE_MESSAGING_SOCKET',
+      'CLAUDE_EFFORT',
+      'CLAUDE_PID',
+    ].filter((name) => process.env[name] !== undefined);
+    console.log(`inherited:${inherited.join(',') || 'none'} keep:${process.env.CLAUDE_CODE_USE_BEDROCK ?? '-'}`);
+    console.log(`\u001b[31mred\u001b[0m and plain`);
+    process.stdin.setRawMode?.(true);
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+      const shown = [...chunk].map((c) => (c < ' ' ? `^${String.fromCharCode(c.charCodeAt(0) + 64)}` : c)).join('');
+      process.stdout.write(`got:${shown}\r\n`);
+      if (chunk.includes('q')) process.exit(Number(process.env.FAKE_EXIT ?? 0));
+    });
+    await new Promise(() => undefined);
+  }
   if (args.includes('--bg')) {
     if (process.env.FAKE_SCENARIO === 'untrusted') {
       console.log(

@@ -88,6 +88,17 @@ export function withoutSessionVars(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return out;
 }
 
+/** The same in `sh`, for a shell whose environment we do not control (a tmux server started long ago). */
+export function unsetSessionVarsScript(): string[] {
+  const any = SESSION_VARS.map((name) => `\${${name}:-}`).join('');
+  const families = SESSION_PREFIXES.map((p) => p.slice(0, -1)).join('|');
+  return [
+    `if [ -n "${any}" ]; then unset ${SESSION_ONLY.join(' ')}; fi`,
+    `unset ${SESSION_VARS.join(' ')}`,
+    `for v in $(env | sed -nE 's/^((${families})_[A-Za-z0-9_]*)=.*/\\1/p'); do unset "$v"; done`,
+  ];
+}
+
 /** What to spawn: an executable plus leading arguments. */
 export interface Command {
   file: string;

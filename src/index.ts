@@ -30,6 +30,24 @@ export { estimateCost } from './cost.js';
 export { BrainyardError, classifyFailure, findReset } from './errors.js';
 export { describeTool, tidyPaths } from './humanize.js';
 export { type OpenOptions, type OpenPlan, type OpenResult, open, planOpen } from './open.js';
+export {
+  attachPane,
+  capturePane,
+  closePane,
+  findPaneSession,
+  listPanes,
+  type PaneInfo,
+  type PaneOptions,
+  type PaneScreen,
+  type PaneSettings,
+  type PaneStart,
+  paneMemory,
+  panesAvailable,
+  resizePane,
+  sendToPane,
+  setPaneSession,
+  startPane,
+} from './panes.js';
 export { maskEmail, redact } from './redact.js';
 export { type AgentRun, continuePrompt, run, start } from './run.js';
 export {

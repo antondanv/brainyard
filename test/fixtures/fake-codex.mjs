@@ -79,6 +79,11 @@ if (args[0] !== 'exec') {
       );
     }
   }
+  // In a pane it stays, as the real TUI does, until it is closed.
+  if (process.env.FAKE_PANE === '1') {
+    console.log('fake-codex ready');
+    await new Promise(() => undefined);
+  }
   process.exit(Number(process.env.FAKE_EXIT ?? 0));
 }
 
