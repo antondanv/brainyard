@@ -56,6 +56,31 @@ if (args[0] === 'exec' && args.includes('--help')) {
   console.log('Run Codex non-interactively\n  --json  --sandbox <MODE>  --skip-git-repo-check  --ephemeral');
   process.exit(0);
 }
+// Anything but `exec` is the interactive TUI. The fake leaves the trace the
+// real one leaves in CODEX_HOME — a rollout file and a thread name — and exits.
+if (args[0] !== 'exec') {
+  const home = process.env.FAKE_CODEX_HOME;
+  if (home && args[0] !== 'resume') {
+    const { mkdirSync, appendFileSync } = await import('node:fs');
+    const id = process.env.FAKE_SESSION_ID ?? '019f0000-0000-7000-8000-000000000001';
+    const now = new Date();
+    const day = join(home, 'sessions', String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), '01');
+    mkdirSync(day, { recursive: true });
+    const meta = { id, timestamp: now.toISOString(), cwd: process.cwd(), originator: 'codex_cli_rs', source: 'cli' };
+    writeFileSync(
+      join(day, `rollout-${now.toISOString().slice(0, 19).replaceAll(':', '-')}-${id}.jsonl`),
+      `${JSON.stringify({ timestamp: now.toISOString(), type: 'session_meta', payload: meta })}\n`,
+    );
+    const prompt = args.includes('--') ? args[args.indexOf('--') + 1] : '';
+    if (prompt) {
+      appendFileSync(
+        join(home, 'session_index.jsonl'),
+        `${JSON.stringify({ id, thread_name: prompt.slice(0, 30), updated_at: now.toISOString() })}\n`,
+      );
+    }
+  }
+  process.exit(Number(process.env.FAKE_EXIT ?? 0));
+}
 
 const prompt = await lines(record).all();
 const resuming = args[1] === 'resume';

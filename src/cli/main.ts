@@ -12,7 +12,10 @@ import { ask, askAll } from '../ask.js';
 import { BRAINS, brainId } from '../brains/info.js';
 import { type Catalog, models } from '../catalog.js';
 import { BrainyardError } from '../errors.js';
+import { clip } from '../humanize.js';
+import { open } from '../open.js';
 import { start } from '../run.js';
+import { type SessionInfo, sessions } from '../sessions.js';
 import { type BrainStatus, status } from '../status.js';
 import type { Access, BrainId, McpServer, RunResult } from '../types.js';
 import { BRAIN_IDS } from '../types.js';
@@ -32,6 +35,8 @@ ${out.bold('Usage')}
   brainyard models [brain...]        models and reasoning efforts each CLI offers
   brainyard ask <brain|all> <prompt> one prompt, one answer (answer on stdout)
   brainyard run <brain> <prompt>     run an agent with a live feed; type to steer it
+  brainyard sessions [brain...]      sessions of this folder in every CLI, running ones marked
+  brainyard open <brain> [prompt]    open a CLI here as a session you can come back to
   brainyard ui                       local dashboard: status, models and a playground
 
 ${out.bold('Brains')}  claude (Claude Code) · codex (Codex) · antigravity (Antigravity, alias agy)
@@ -44,6 +49,9 @@ ${out.bold('ask')}      --model <m>  --effort <e>  --system <text>  --web  --acc
 ${out.bold('run')}      --cwd <dir>  --model <m>  --effort <e>  --resume <session>
          --access <full|workspace|readonly>  --no-web  --no-shell  --mcp <servers.json>
          --timeout <sec>  --json  --raw  --verbose  --quiet  --no-nudge  --no-steer  --no-stdin
+${out.bold('sessions')} --cwd <dir>  --headless  --limit <n>  --json
+${out.bold('open')}     --cwd <dir>  --resume <session>  --name <name>  --system <text>  --model <m>  --effort <e>
+         --mode <permission mode>  --worktree [name]  --bg (Claude Code)  --json
 ${out.bold('ui')}       --port <n> (4747)  --host <addr> (127.0.0.1)  --token <t>  --no-open
 
 ${out.bold('Examples')}
@@ -52,6 +60,8 @@ ${out.bold('Examples')}
   git diff | brainyard ask claude --model haiku "Review this diff"
   brainyard run claude --cwd ./app "Add a unit test for src/math.ts"
   brainyard run codex --resume <session-id> "Now make it pass"
+  brainyard open claude --name "auth refactor" "Plan the OAuth migration"
+  brainyard sessions --cwd ~/code/app
 
 Docs: https://github.com/antondanv/brainyard`;
 
@@ -69,6 +79,10 @@ async function main(argv: string[]): Promise<number> {
       return askCommand(rest);
     case 'run':
       return runCommand(rest);
+    case 'sessions':
+      return sessionsCommand(rest);
+    case 'open':
+      return openCommand(rest);
     case 'ui':
     case 'serve':
       return uiCommand(rest);
@@ -259,6 +273,105 @@ async function modelsCommand(args: string[]): Promise<number> {
   }
   process.stdout.write(lines.join('\n'));
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// sessions / open
+// ---------------------------------------------------------------------------
+async function sessionsCommand(args: string[]): Promise<number> {
+  const { values, positionals } = parse(args, {
+    cwd: { type: 'string' },
+    headless: { type: 'boolean' },
+    limit: { type: 'string' },
+    json: { type: 'boolean' },
+  });
+  const brains = positionals.length > 0 ? positionals.map((value) => brainArg(value)) : [...BRAIN_IDS];
+  const limit = values.limit === undefined ? 20 : Number(values.limit);
+  if (!Number.isInteger(limit) || limit <= 0) throw new UsageError(`--limit wants a number, not "${values.limit}"`);
+  const list = await sessions({ cwd: values.cwd ?? process.cwd(), brains, headless: values.headless === true, limit });
+  if (values.json) {
+    process.stdout.write(`${JSON.stringify(list, null, 2)}\n`);
+    return 0;
+  }
+  if (list.length === 0) {
+    process.stdout.write(`${out.dim('no sessions in this folder yet')}\n`);
+    return 0;
+  }
+  const lines = list.map((session) => sessionLine(session));
+  process.stdout.write(`${lines.join('\n')}\n`);
+  return 0;
+}
+
+function sessionLine(session: SessionInfo): string {
+  const label = pad(BRAINS[session.brain].label, 12);
+  const when = session.updatedAt ?? session.startedAt;
+  const age = when ? ago(Date.parse(when)) : '';
+  let state = '';
+  if (session.live?.status === 'busy') state = out.cyan(' ● working');
+  else if (session.live?.status === 'waiting')
+    state = out.yellow(` ● waiting${session.live.waitingFor ? `: ${session.live.waitingFor}` : ''}`);
+  else if (session.live) state = out.green(' ● open');
+  const title = session.title ? clip(session.title, 72) : out.dim('(untitled)');
+  const bg = session.background ? out.dim(' bg') : '';
+  return `${label} ${out.dim(session.id.slice(0, 8))}  ${pad(age, 8)} ${title}${bg}${state}`;
+}
+
+function ago(ms: number): string {
+  const seconds = Math.max(0, (Date.now() - ms) / 1000);
+  if (seconds < 90) return 'now';
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  if (seconds < 86_400) return `${Math.round(seconds / 3600)}h`;
+  return `${Math.round(seconds / 86_400)}d`;
+}
+
+async function openCommand(args: string[]): Promise<number> {
+  const { values, positionals } = parse(args, {
+    cwd: { type: 'string' },
+    resume: { type: 'string' },
+    name: { type: 'string' },
+    system: { type: 'string' },
+    model: { type: 'string' },
+    effort: { type: 'string' },
+    mode: { type: 'string' },
+    worktree: { type: 'string' },
+    bg: { type: 'boolean' },
+    json: { type: 'boolean' },
+  });
+  const [target, ...words] = positionals;
+  const brain = brainArg(target);
+  const prompt = words.join(' ').trim();
+  const result = await open({
+    brain,
+    cwd: values.cwd ?? process.cwd(),
+    ...(prompt ? { prompt } : {}),
+    ...(values.resume ? { resume: values.resume } : {}),
+    ...(values.name ? { name: values.name } : {}),
+    ...(values.system ? { system: values.system } : {}),
+    ...(values.model ? { model: values.model } : {}),
+    ...(values.effort ? { effort: values.effort } : {}),
+    ...(values.mode ? { permissionMode: values.mode } : {}),
+    ...(values.worktree !== undefined ? { worktree: values.worktree || true } : {}),
+    ...(values.bg ? { background: true } : {}),
+  });
+  if (values.json) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return result.ok ? 0 : 1;
+  }
+  for (const warning of result.warnings) process.stderr.write(`${err.yellow('!')} ${warning}\n`);
+  if (result.error) {
+    process.stderr.write(`${err.red('✗')} ${result.error.message}\n`);
+    return 1;
+  }
+  if (result.sessionId) {
+    const how =
+      brain === 'claude'
+        ? `claude --resume ${result.sessionId}`
+        : brain === 'codex'
+          ? `codex resume ${result.sessionId}`
+          : `agy --conversation ${result.sessionId}`;
+    process.stderr.write(`${err.dim('session')} ${result.sessionId} ${err.dim(`· continue: ${how}`)}\n`);
+  }
+  return result.ok ? 0 : (result.exitCode ?? 1);
 }
 
 // ---------------------------------------------------------------------------

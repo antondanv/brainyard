@@ -16,9 +16,33 @@ if (args[0] === '--version') {
 }
 if (args[0] === '--help') {
   console.log(
-    'Usage: claude [options]\n  --safe-mode  --tools <tools...>  --no-session-persistence  --strict-mcp-config',
+    'Usage: claude [options]\n  --safe-mode  --tools <tools...>  --no-session-persistence  --strict-mcp-config' +
+      (process.env.FAKE_OLD
+        ? ''
+        : '\n  --session-id <uuid>  -n, --name <name>  --append-system-prompt <prompt>  --bg  -w, --worktree [name]'),
   );
   process.exit(0);
+}
+// Agent view: running sessions as JSON, from the test.
+if (args[0] === 'agents') {
+  console.log(process.env.FAKE_AGENTS ?? '[]');
+  process.exit(0);
+}
+// Without `-p` the real CLI is interactive: it owns the terminal until you
+// exit. The fake records how it was called and exits.
+if (!args.includes('-p') && args[0] !== 'auth') {
+  if (args.includes('--bg')) {
+    if (process.env.FAKE_SCENARIO === 'untrusted') {
+      console.log(
+        `Workspace not trusted. Run \`claude\` in ${process.cwd()} once and accept the trust prompt, then retry.`,
+      );
+      process.exit(0);
+    }
+    const name = args.includes('--name') ? args[args.indexOf('--name') + 1] : 'fake-1a';
+    console.log(`Starting background service…\nbackgrounded · ${process.env.FAKE_BG_ID ?? '1a2b3c4d'} · ${name}`);
+    console.log(`  claude attach ${process.env.FAKE_BG_ID ?? '1a2b3c4d'}    open in this terminal`);
+  }
+  process.exit(Number(process.env.FAKE_EXIT ?? 0));
 }
 if (args[0] === 'auth') {
   if (process.env.FAKE_AUTH === 'out') console.log(JSON.stringify({ loggedIn: false }));

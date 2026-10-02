@@ -52,6 +52,42 @@ export function which(bin: string, env: NodeJS.ProcessEnv = process.env): string
   return undefined;
 }
 
+/**
+ * Variables a Claude Code session sets for the programs it starts. A new
+ * session that inherits them believes it is that session's child: it stops
+ * saving its transcript (so it can never be resumed), reports to the parent
+ * over its socket and takes the parent's effort. Found by running a CLI from
+ * inside Claude Code (2.1.287).
+ */
+export const SESSION_VARS = [
+  'CLAUDECODE',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_SSE_PORT',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_EXECPATH',
+  'CLAUDE_PID',
+] as const;
+/** Whole families: `CLAUDE_CODE_SESSION_ID`, `CLAUDE_CODE_MESSAGING_SOCKET`… */
+export const SESSION_PREFIXES = ['CLAUDE_CODE_SESSION_', 'CLAUDE_CODE_MESSAGING_'] as const;
+/** Set by a session for its children, but a person may also set it on purpose: dropped only inside a session. */
+const SESSION_ONLY = ['CLAUDE_EFFORT'] as const;
+
+function insideSession(env: NodeJS.ProcessEnv): boolean {
+  return SESSION_VARS.some((name) => env[name] !== undefined);
+}
+
+/** The environment for a new CLI session: what a parent session left for its children removed. */
+export function withoutSessionVars(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out = { ...env };
+  if (insideSession(env)) for (const name of SESSION_ONLY) delete out[name];
+  for (const name of Object.keys(out)) {
+    if ((SESSION_VARS as readonly string[]).includes(name) || SESSION_PREFIXES.some((p) => name.startsWith(p))) {
+      delete out[name];
+    }
+  }
+  return out;
+}
+
 /** What to spawn: an executable plus leading arguments. */
 export interface Command {
   file: string;
@@ -156,6 +192,33 @@ export function spawnCommand(command: Command, args: readonly string[], options:
   }
   track(child);
   return child;
+}
+
+/**
+ * Runs a CLI for a person in this terminal: it gets the keyboard and the
+ * screen until it exits. Not detached — a process outside the terminal's
+ * foreground group is stopped the moment it reads the keyboard — and not
+ * tracked, so it is never killed on our behalf.
+ */
+export function spawnInteractive(
+  command: Command,
+  args: readonly string[],
+  options: { cwd: string; env: NodeJS.ProcessEnv },
+): ChildProcess {
+  if (command.shell) {
+    const double = NPM_SHIM.test(command.file);
+    const line = [
+      escapeCmdCommand(command.file),
+      ...[...command.args, ...args].map((part) => quoteForCmd(part, double)),
+    ].join(' ');
+    return spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"${line}"`], {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: 'inherit',
+      windowsVerbatimArguments: true,
+    });
+  }
+  return spawn(command.file, [...command.args, ...args], { cwd: options.cwd, env: options.env, stdio: 'inherit' });
 }
 
 // Batch files go through `cmd.exe /d /s /c "…"`, quoted the way cross-spawn

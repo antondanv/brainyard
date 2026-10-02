@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { feedLine, paint, width } from '../src/cli/term.js';
 import { estimateCost } from '../src/cost.js';
 import { resolveLaunch } from '../src/options.js';
+import { withoutSessionVars } from '../src/process.js';
 import { EventStream } from '../src/stream.js';
 import type { AgentEvent } from '../src/types.js';
 import { FAKE, tempDir } from './helpers.js';
@@ -136,5 +137,28 @@ describe('quoting for cmd.exe', () => {
     expect(quoteForCmd('a b&c')).toBe('^"a^ b^&c^"');
     expect(quoteForCmd('say "hi"')).toBe('^"say^ \\^"hi\\^"^"');
     expect(quoteForCmd('x', true)).toBe('^^^"x^^^"');
+  });
+});
+
+describe('withoutSessionVars', () => {
+  it('drops what a Claude Code session leaves for its children, and nothing a person set', () => {
+    const inside = withoutSessionVars({
+      PATH: '/bin',
+      CLAUDECODE: '1',
+      CLAUDE_CODE_CHILD_SESSION: '1',
+      CLAUDE_CODE_SESSION_ID: 'abc',
+      CLAUDE_CODE_SESSION_ATTENDED: '1',
+      CLAUDE_CODE_MESSAGING_SOCKET: '/tmp/s.sock',
+      CLAUDE_CODE_MESSAGING_TOKEN: 'secret',
+      CLAUDE_PID: '42',
+      CLAUDE_EFFORT: 'xhigh',
+      CLAUDE_CODE_USE_BEDROCK: '1',
+      ANTHROPIC_API_KEY: 'k',
+    });
+    expect(inside).toEqual({ PATH: '/bin', CLAUDE_CODE_USE_BEDROCK: '1', ANTHROPIC_API_KEY: 'k' });
+  });
+
+  it('keeps an effort a person set in a plain shell', () => {
+    expect(withoutSessionVars({ CLAUDE_EFFORT: 'high' })).toEqual({ CLAUDE_EFFORT: 'high' });
   });
 });

@@ -26,8 +26,31 @@ if (args[0] === 'models') {
   process.exit(0);
 }
 if (args[0] === '--help') {
-  console.log('Usage of agy:\n  --print-timeout  --sandbox  --mode  --conversation  --add-dir');
+  console.log('Usage of agy:\n  --print-timeout  --sandbox  --mode  --conversation  --add-dir  --prompt-interactive');
   process.exit(0);
+}
+// Without print mode the real CLI is interactive. The fake writes the line
+// the real one appends to history.jsonl for a prompt, and exits.
+if (!args.some((arg) => arg === '-p' || arg.startsWith('-p=') || arg === '--print')) {
+  const home = process.env.FAKE_AGY_HOME;
+  if (home) {
+    const { mkdirSync, appendFileSync } = await import('node:fs');
+    mkdirSync(home, { recursive: true });
+    const given = args.find((arg) => arg.startsWith('--prompt-interactive='));
+    const conversation = args.includes('--conversation')
+      ? args[args.indexOf('--conversation') + 1]
+      : (process.env.FAKE_SESSION_ID ?? 'agy-int-1');
+    appendFileSync(
+      join(home, 'history.jsonl'),
+      `${JSON.stringify({
+        display: given ? given.slice('--prompt-interactive='.length) : 'hi',
+        timestamp: Date.now(),
+        workspace: process.cwd(),
+        conversationId: conversation,
+      })}\n`,
+    );
+  }
+  process.exit(Number(process.env.FAKE_EXIT ?? 0));
 }
 
 const input = lines(record);

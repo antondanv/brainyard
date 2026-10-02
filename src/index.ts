@@ -29,8 +29,21 @@ export {
 export { estimateCost } from './cost.js';
 export { BrainyardError, classifyFailure, findReset } from './errors.js';
 export { describeTool, tidyPaths } from './humanize.js';
+export { type OpenOptions, type OpenPlan, type OpenResult, open, planOpen } from './open.js';
 export { maskEmail, redact } from './redact.js';
 export { type AgentRun, continuePrompt, run, start } from './run.js';
+export {
+  agyHome,
+  claudeHome,
+  claudeProjectDir,
+  codexHome,
+  type LiveOptions,
+  type LiveState,
+  liveSessions,
+  type SessionInfo,
+  type SessionsOptions,
+  sessions,
+} from './sessions.js';
 export {
   type AuthInfo,
   type Availability,

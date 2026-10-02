@@ -7,7 +7,13 @@ export function recorder(args) {
     argv: args,
     cwd: process.cwd(),
     stdin: [],
-    env: { IS_SANDBOX: process.env.IS_SANDBOX ?? null, FAKE_EXTRA: process.env.FAKE_EXTRA ?? null },
+    env: {
+      IS_SANDBOX: process.env.IS_SANDBOX ?? null,
+      FAKE_EXTRA: process.env.FAKE_EXTRA ?? null,
+      CLAUDE_CODE_CHILD_SESSION: process.env.CLAUDE_CODE_CHILD_SESSION ?? null,
+      CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID ?? null,
+      CLAUDE_EFFORT: process.env.CLAUDE_EFFORT ?? null,
+    },
   };
   process.on('exit', () => {
     if (process.env.FAKE_RECORD) writeFileSync(process.env.FAKE_RECORD, JSON.stringify(record));
