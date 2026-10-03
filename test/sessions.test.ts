@@ -348,6 +348,43 @@ describe('sessions: Antigravity', () => {
   });
 });
 
+describe('sessions: Antigravity without a workspace in its database', () => {
+  it('finds the folder in the run log', async () => {
+    const cwd = project();
+    const home = tempDir();
+    const { DatabaseSync } = (await import('node:sqlite')) as unknown as {
+      DatabaseSync: new (path: string) => { exec(sql: string): void; close(): void };
+    };
+    const db = new DatabaseSync(join(home, 'conversation_summaries.db'));
+    db.exec(
+      'CREATE TABLE conversation_summaries (conversation_id text, title text, workspace_uris text, status text, ' +
+        'not_fully_idle numeric, killed numeric, last_modified_time datetime, last_user_input_time datetime)',
+    );
+    db.exec(
+      "INSERT INTO conversation_summaries VALUES ('aa11bb22-0000-4000-8000-000000000001', 'Здесь', '', 'CASCADE_RUN_STATUS_IDLE', 0, 0, datetime('now'), datetime('now'))," +
+        "('aa11bb22-0000-4000-8000-000000000002', 'Не здесь', '', 'CASCADE_RUN_STATUS_RUNNING', 0, 0, datetime('now'), datetime('now'))",
+    );
+    db.close();
+    mkdirSync(join(home, 'log'));
+    writeFileSync(
+      join(home, 'log', 'cli-20261003_233502.log'),
+      `I1003 23:35:02.826984 1 server.go:323] Creating CLI server backend: product=antigravity workspaceDirs=[${cwd}] appDataDir=${home}\n` +
+        'I1003 23:35:07.165237 411 server.go:1263] Created conversation aa11bb22-0000-4000-8000-000000000001\n',
+    );
+    writeFileSync(
+      join(home, 'log', 'cli-20261003_233610.log'),
+      'I1003 23:36:10.000000 1 server.go:323] Creating CLI server backend: product=antigravity workspaceDirs=[/other] appDataDir=x\n' +
+        'I1003 23:36:12.000000 411 server.go:3133] GetConversationDetail: found conversation aa11bb22-0000-4000-8000-000000000002 (active=true)\n',
+    );
+    const list = await sessions({ cwd, brains: ['antigravity'], homes: { antigravity: home } });
+    expect(list.map((session) => [session.id, session.cwd])).toEqual([['aa11bb22-0000-4000-8000-000000000001', cwd]]);
+    const live = await liveSessions({ brains: ['antigravity'], homes: { antigravity: home } });
+    expect(live.map((session) => [session.id, session.cwd])).toEqual([
+      ['aa11bb22-0000-4000-8000-000000000002', '/other'],
+    ]);
+  });
+});
+
 describe('planOpen', () => {
   it('Claude Code: session id up front, a name, instructions in the system prompt, the prompt after --', async () => {
     const cwd = project();

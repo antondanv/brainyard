@@ -15,7 +15,9 @@
  * - Antigravity: `~/.gemini/antigravity-cli/conversation_summaries.db`
  *   (SQLite: title, workspace, status), or `history.jsonl` — one line per
  *   prompt with `workspace` and `conversationId` — where `node:sqlite` is
- *   missing.
+ *   missing. Interactive conversations of agy 1.2 leave the workspace empty
+ *   and the history unwritten; their folder is in the CLI's own log,
+ *   `log/cli-*.log`, one file per run.
  *
  * None of these is a public API. Every reader skips what it does not
  * understand instead of failing, and a store that is not there is an empty
@@ -341,7 +343,7 @@ async function agyLive(home: string): Promise<SessionInfo[]> {
         interactive: true,
         live: { status: state, kind: 'interactive' },
       };
-      const cwd = workspaces(text(r.workspace_uris))[0];
+      const cwd = workspaces(text(r.workspace_uris))[0] ?? agyLogWorkspaces(join(home, 'log')).get(id)?.[0];
       if (cwd) session.cwd = cwd;
       if (text(r.title)) {
         session.title = text(r.title);
@@ -638,7 +640,9 @@ function rolloutFiles(root: string): string[] {
 
 async function agySessions(home: string, places: ReadonlySet<string>): Promise<SessionInfo[]> {
   const fromHistory = agyFromHistory(join(home, 'history.jsonl'), places);
-  const fromDb = await agyFromDatabase(join(home, 'conversation_summaries.db'), places);
+  const fromDb = await agyFromDatabase(join(home, 'conversation_summaries.db'), places, () =>
+    agyLogWorkspaces(join(home, 'log')),
+  );
   if (!fromDb) return fromHistory;
   // The database knows titles and times, but a conversation can sit there
   // with an empty title; the history still has what was typed first.
@@ -687,7 +691,11 @@ function openSqlite(): Promise<((path: string) => Database) | undefined> {
   return sqlite;
 }
 
-async function agyFromDatabase(path: string, places: ReadonlySet<string>): Promise<SessionInfo[] | undefined> {
+async function agyFromDatabase(
+  path: string,
+  places: ReadonlySet<string>,
+  logged: () => Map<string, string[]>,
+): Promise<SessionInfo[] | undefined> {
   try {
     statSync(path);
   } catch {
@@ -709,7 +717,9 @@ async function agyFromDatabase(path: string, places: ReadonlySet<string>): Promi
       const r = record(row);
       const id = text(r.conversation_id);
       if (!id) continue;
-      const cwd = workspaces(text(r.workspace_uris)).find((place) => places.has(place));
+      let listed = workspaces(text(r.workspace_uris));
+      if (listed.length === 0) listed = logged().get(id) ?? [];
+      const cwd = listed.find((place) => places.has(place));
       if (!cwd) continue;
       const session: SessionInfo = { brain: 'antigravity', id, cwd, interactive: true };
       const title = text(r.title);
@@ -742,6 +752,53 @@ function workspaces(uris: string): string[] {
   } catch {
     return [];
   }
+}
+
+const agyLogs = new Map<string, { stamp: string; found: Map<string, string[]> }>();
+
+/**
+ * Which folders each conversation ran in, from the CLI's run logs: a run
+ * names its workspace once (`workspaceDirs=[…]`) and every conversation it
+ * creates or opens. A log is read again only when it changed.
+ */
+export function agyLogWorkspaces(dir: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  let names: string[];
+  try {
+    names = readdirSync(dir).filter((name) => /^cli-.*\.log$/.test(name));
+  } catch {
+    return out;
+  }
+  for (const name of names.sort()) {
+    const path = join(dir, name);
+    let stamp: string;
+    try {
+      const stat = statSync(path);
+      stamp = `${stat.size}:${stat.mtimeMs}`;
+    } catch {
+      continue;
+    }
+    let cached = agyLogs.get(path);
+    if (cached?.stamp !== stamp) {
+      cached = { stamp, found: agyLogFolders(readText(path)) };
+      agyLogs.set(path, cached);
+    }
+    for (const [id, folders] of cached.found) out.set(id, folders);
+  }
+  return out;
+}
+
+function agyLogFolders(log: string): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  // Go prints the list space-separated: a folder with a space in its name
+  // stays whole only when it is the only one.
+  const dirs = /workspaceDirs=\[([^\]\n]*)\]/.exec(log)?.[1]?.trim();
+  if (!dirs) return found;
+  const folders = [...new Set([dirs, ...dirs.split(' ')])].filter((dir) => dir.startsWith('/'));
+  for (const match of log.matchAll(/(?:Created|found) conversation ([0-9a-f][0-9a-f-]{7,})/g)) {
+    if (match[1]) found.set(match[1], folders);
+  }
+  return found;
 }
 
 function agyFromHistory(path: string, places: ReadonlySet<string>): SessionInfo[] {
