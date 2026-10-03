@@ -49,7 +49,8 @@ export interface OpenOptions {
   effort?: string;
   /**
    * Claude Code: `default`, `plan`, `acceptEdits`, `auto`…
-   * Antigravity: `plan` or `accept-edits` (`acceptEdits` is translated).
+   * Antigravity: `plan`, `accept-edits` (`acceptEdits` is translated) or
+   * `bypassPermissions` — every tool approved (`--dangerously-skip-permissions`).
    */
   permissionMode?: string;
   /** Claude Code: work in a new git worktree; a string names it. */
@@ -186,7 +187,11 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
     if (options.permissionMode) {
       const mode = options.permissionMode === 'acceptEdits' ? 'accept-edits' : options.permissionMode;
       if (mode === 'plan' || mode === 'accept-edits') args.push('--mode', mode);
-      else warnings.push(`Antigravity has no "${options.permissionMode}" mode, only plan and accept-edits`);
+      else if (mode === 'bypassPermissions') args.push('--dangerously-skip-permissions');
+      else
+        warnings.push(
+          `Antigravity has no "${options.permissionMode}" mode, only plan, accept-edits and bypassPermissions`,
+        );
     }
     if (options.worktree) warnings.push('Antigravity does not create worktrees');
     args.push(...(options.extraArgs ?? []));

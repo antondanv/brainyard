@@ -506,6 +506,18 @@ describe('planOpen', () => {
     expect(plan.args).toEqual(['--conversation', 'conv-1', '--mode', 'accept-edits', '--prompt-interactive=-dash']);
   });
 
+  it('Antigravity: bypassPermissions approves every tool', async () => {
+    const plan = await planOpen({
+      brain: 'antigravity',
+      cwd: project(),
+      resume: 'conv-1',
+      permissionMode: 'bypassPermissions',
+      command: FAKE.antigravity,
+    });
+    expect(plan.args).toEqual(['--conversation', 'conv-1', '--dangerously-skip-permissions']);
+    expect(plan.warnings).toEqual([]);
+  });
+
   it('refuses a folder that does not exist', async () => {
     await expect(planOpen({ brain: 'claude', cwd: '/no/such/folder', command: FAKE.claude })).rejects.toThrow(
       /no such folder/,
