@@ -60,7 +60,9 @@ export {
   liveSessions,
   type SessionInfo,
   type SessionsOptions,
+  type StopSessionOptions,
   sessions,
+  stopSession,
 } from './sessions.js';
 export {
   type AuthInfo,

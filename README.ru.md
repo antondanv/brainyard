@@ -189,6 +189,15 @@ await run({
 Если CLI запустился, `result` разрешается — смотрите на `result.ok`. `ask()` при любом сбое
 бросает `BrainyardError` с полем `kind`. Больше примеров — в [`examples/`](examples).
 
+### Сохранённые фоновые сессии
+
+`stopSession({ brain: 'claude', sessionId, cwd })` останавливает сохранённую фоновую
+сессию Claude Code через `claude stop`. Перед остановкой обновляет её короткий id
+и проверяет папку. Разговор остаётся в истории Claude Code; продолжить его можно
+через `open({ brain: 'claude', resume: sessionId, cwd })`.
+Возвращает `stopped` или `not-running`; при сбое CLI выбрасывает `BrainyardError`.
+Сессии в панелях tmux закрываются через `closePane()`.
+
 ### Живые статусы сессий
 
 `liveSessions()` читает текущий ход каждого CLI. Журнал Codex разбирается один раз,

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { clearFlagCache } from '../src/flags.js';
 import { open, planOpen } from '../src/open.js';
-import { claudeProjectDir, liveSessions, sessions } from '../src/sessions.js';
+import { claudeProjectDir, liveSessions, sessions, stopSession } from '../src/sessions.js';
 import { FAKE, recording, tempDir } from './helpers.js';
 
 const lines = (...entries: unknown[]) => `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`;
@@ -30,6 +30,95 @@ const user = (cwd: string, text: string, entrypoint = 'cli') => ({
 
 beforeEach(() => {
   clearFlagCache();
+});
+
+describe('stopping saved background sessions', () => {
+  const id = '5e6f7a8b-0000-4000-8000-000000000001';
+  const background = (cwd: string) => ({
+    id: '5e6f7a8b',
+    sessionId: id,
+    kind: 'background',
+    status: 'busy',
+    state: 'working',
+    cwd,
+  });
+
+  it('uses the refreshed short id, preserves the transcript and resumes the same conversation', async () => {
+    const cwd = project();
+    const home = tempDir();
+    const rec = recording();
+    claudeStore(home, cwd, id, [user(cwd, 'Keep this conversation')]);
+    const before = await sessions({ cwd, brains: ['claude'], homes: { claude: home }, live: false });
+    const result = await stopSession({
+      brain: 'claude',
+      sessionId: id,
+      cwd,
+      command: FAKE.claude,
+      env: { FAKE_RECORD: rec.path, FAKE_AGENTS: JSON.stringify([background(cwd)]), CLAUDE_CODE_CHILD_SESSION: '1' },
+    });
+    expect(result).toBe('stopped');
+    expect(rec.read()).toMatchObject({ argv: ['stop', '5e6f7a8b'], cwd, env: { CLAUDE_CODE_CHILD_SESSION: null } });
+    expect(await sessions({ cwd, brains: ['claude'], homes: { claude: home }, live: false })).toEqual(before);
+    const resumed = await open({ brain: 'claude', resume: id, cwd, command: FAKE.claude, homes: { claude: home } });
+    expect(resumed).toMatchObject({ ok: true, sessionId: id, background: false });
+  });
+
+  it('does not issue a stop command for a session that already exited', async () => {
+    const rec = recording();
+    await expect(
+      stopSession({
+        brain: 'claude',
+        sessionId: id,
+        cwd: project(),
+        command: FAKE.claude,
+        env: { FAKE_RECORD: rec.path, FAKE_AGENTS: '[]' },
+      }),
+    ).resolves.toBe('not-running');
+    expect(rec.read().argv).toEqual(['agents', '--json']);
+  });
+
+  it.each(['interactive', 'other-folder', 'missing-short-id'])('refuses an invalid target: %s', async (kind) => {
+    const cwd = project();
+    const rec = recording();
+    const target = {
+      ...background(kind === 'other-folder' ? project() : cwd),
+      ...(kind === 'interactive' ? { kind: 'interactive' } : {}),
+      ...(kind === 'missing-short-id' ? { id: '' } : {}),
+    };
+    await expect(
+      stopSession({
+        brain: 'claude',
+        sessionId: id,
+        cwd,
+        command: FAKE.claude,
+        env: { FAKE_RECORD: rec.path, FAKE_AGENTS: JSON.stringify([target]) },
+      }),
+    ).rejects.toThrow();
+    expect(rec.read().argv).toEqual(['agents', '--json']);
+  });
+
+  it('reports a CLI failure without claiming the session stopped', async () => {
+    const cwd = project();
+    await expect(
+      stopSession({
+        brain: 'claude',
+        sessionId: id,
+        cwd,
+        command: FAKE.claude,
+        env: { FAKE_AGENTS: JSON.stringify([background(cwd)]), FAKE_STOP_EXIT: '1', FAKE_STOP_ERROR: 'stop failed' },
+      }),
+    ).rejects.toThrow('stop failed');
+  });
+
+  it('reports a broken live-session query instead of treating the session as stopped', async () => {
+    await expect(
+      stopSession({ brain: 'claude', sessionId: id, command: FAKE.claude, env: { FAKE_AGENTS: 'not JSON' } }),
+    ).rejects.toThrow('invalid live-session JSON');
+  });
+
+  it('does not substitute a process kill for an unsupported CLI', async () => {
+    await expect(stopSession({ brain: 'codex', sessionId: id })).rejects.toThrow('only Claude Code');
+  });
 });
 
 describe('sessions: Claude Code', () => {

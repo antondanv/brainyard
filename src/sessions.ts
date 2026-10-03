@@ -27,10 +27,11 @@ import { basename, join, resolve } from 'node:path';
 
 import { BRAINS } from './brains/info.js';
 import { codexPaneStates, codexRolloutState } from './codex-live.js';
+import { BrainyardError } from './errors.js';
 import { oneLine } from './humanize.js';
 import { resolveBrain } from './options.js';
 import type { PaneSettings } from './panes.js';
-import { capture, resolveCommand } from './process.js';
+import { capture, resolveCommand, withoutSessionVars } from './process.js';
 import type { BrainId } from './types.js';
 import { BRAIN_IDS } from './types.js';
 
@@ -193,20 +194,75 @@ export async function liveSessions(options: LiveOptions = {}): Promise<SessionIn
   );
 }
 
-async function claudeLive(options: LiveOptions, env: NodeJS.ProcessEnv): Promise<SessionInfo[]> {
+export interface StopSessionOptions {
+  brain: BrainId | string;
+  /** The full session id, as returned by `sessions()` or `liveSessions()`. */
+  sessionId: string;
+  /** The session's folder. Defaults to `process.cwd()`. */
+  cwd?: string;
+  /** Executable for Claude Code, as in `open()`. */
+  command?: string | string[];
+  env?: NodeJS.ProcessEnv;
+}
+
+/** Stops a Claude Code background session through its CLI, keeping its conversation resumable. */
+export async function stopSession(options: StopSessionOptions): Promise<'stopped' | 'not-running'> {
+  const brain = resolveBrain(options.brain);
+  if (brain !== 'claude') {
+    throw new BrainyardError('invalid_option', 'only Claude Code has background sessions to stop', { brain });
+  }
+  const env = withoutSessionVars({ ...process.env, ...options.env });
+  // Refresh the full-id to short-id mapping; a remembered PID is not a session identity.
+  const list = await claudeLive(options, env, true);
+  const session = list.find((candidate) => candidate.id === options.sessionId);
+  if (!session) return 'not-running';
+  if (session.live?.kind !== 'background') {
+    throw new BrainyardError('invalid_option', 'this session is open in another terminal, not in the background', {
+      brain,
+    });
+  }
+  const cwd = resolve(options.cwd ?? process.cwd());
+  if (!session.cwd || !pathVariants(cwd).has(session.cwd)) {
+    throw new BrainyardError('invalid_option', 'the background session belongs to another folder', { brain });
+  }
+  const shortId = session.live.shortId;
+  if (!shortId || !/^[0-9a-f]{6,}$/i.test(shortId)) {
+    throw new BrainyardError('failed', "Claude Code did not report the background session's short id", { brain });
+  }
+  const command = resolveCommand(options.command, BRAINS.claude.binary, BRAINS.claude.envVar, env)!;
+  const got = await capture(command, ['stop', shortId], { cwd, env, timeoutMs: 15_000 });
+  if (got.code !== 0 || got.timedOut || got.error) {
+    throw new BrainyardError(
+      got.error ? 'not_installed' : 'failed',
+      got.timedOut
+        ? 'Claude Code timed out stopping the background session'
+        : got.stderr.trim() || got.stdout.trim() || got.error?.message || 'Claude Code did not stop the session',
+      { brain },
+    );
+  }
+  return 'stopped';
+}
+
+async function claudeLive(options: LiveOptions, env: NodeJS.ProcessEnv, strict = false): Promise<SessionInfo[]> {
+  const failed = (kind: 'not_installed' | 'failed', message: string): SessionInfo[] => {
+    if (strict) throw new BrainyardError(kind, message, { brain: 'claude' });
+    return [];
+  };
   const command = resolveCommand(options.command, BRAINS.claude.binary, BRAINS.claude.envVar, env);
-  if (!command) return [];
+  if (!command) return failed('not_installed', 'Claude Code is not installed');
   const args = ['agents', '--json'];
   if (options.all) args.push('--all');
   const got = await capture(command, args, { timeoutMs: 10_000, env });
-  if (got.code !== 0) return [];
+  if (got.code !== 0 || got.timedOut || got.error) {
+    return failed('failed', got.stderr.trim() || got.error?.message || 'Claude Code could not list live sessions');
+  }
   let rows: unknown;
   try {
     rows = JSON.parse(got.stdout);
   } catch {
-    return [];
+    return failed('failed', 'Claude Code returned invalid live-session JSON');
   }
-  if (!Array.isArray(rows)) return [];
+  if (!Array.isArray(rows)) return failed('failed', 'Claude Code returned an invalid live-session list');
   const out: SessionInfo[] = [];
   for (const row of rows) {
     const session = liveRow(row);

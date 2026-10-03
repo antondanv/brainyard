@@ -28,6 +28,10 @@ if (args[0] === 'agents') {
   console.log(process.env.FAKE_AGENTS ?? '[]');
   process.exit(0);
 }
+if (args[0] === 'stop') {
+  if (process.env.FAKE_STOP_ERROR) console.error(process.env.FAKE_STOP_ERROR);
+  process.exit(Number(process.env.FAKE_STOP_EXIT ?? 0));
+}
 // Without `-p` the real CLI is interactive: it owns the terminal until you
 // exit. The fake records how it was called and exits.
 if (!args.includes('-p') && args[0] !== 'auth') {

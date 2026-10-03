@@ -185,6 +185,15 @@ await run({
 has started, it resolves: check `result.ok`. `ask()` throws a `BrainyardError` with a `kind` on
 any failure. More in [`examples/`](examples).
 
+### Saved background sessions
+
+`stopSession({ brain: 'claude', sessionId, cwd })` stops a saved Claude Code
+background session with `claude stop`. It refreshes the session's short id and
+checks its folder first. The conversation stays in Claude Code's history and can
+be opened again with `open({ brain: 'claude', resume: sessionId, cwd })`.
+It returns `stopped` or `not-running`; a CLI failure throws `BrainyardError`.
+Sessions in tmux panes use `closePane()` instead.
+
 ### Live session status
 
 `liveSessions()` reads the current turn from each CLI. Codex rollouts are replayed
