@@ -275,6 +275,12 @@ async function openHere(
   env: NodeJS.ProcessEnv,
   startedAt: Date,
 ): Promise<OpenResult> {
+  if (process.stdin.isTTY) {
+    // Flush a fresh pause before the child changes shared terminal descriptor flags.
+    process.stdin.resume();
+    process.stdin.pause();
+    await new Promise<void>((done) => setImmediate(done));
+  }
   const child = spawnInteractive(plan.command, plan.args, { cwd: plan.cwd, env });
   // Ctrl+C in the terminal reaches every process in the foreground group, us
   // included. It is meant for the CLI, which handles it; we wait.
