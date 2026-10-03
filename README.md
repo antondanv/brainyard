@@ -185,6 +185,19 @@ await run({
 has started, it resolves: check `result.ok`. `ask()` throws a `BrainyardError` with a `kind` on
 any failure. More in [`examples/`](examples).
 
+### Live session status
+
+`liveSessions()` reads the current turn from each CLI. Codex rollouts are replayed
+once and then read incrementally, so long turns retain their state. Pending
+questions and approvals stop waiting when their matching response arrives.
+Completed or interrupted Codex turns leave the live list.
+
+Recent Codex versions omit native command approvals from their rollout. Pass
+`liveSessions({ panes: {} })` to check current Codex dialogs on Brainyard's tmux
+server as well, or supply `panes: { socket }` for a separate server. Only the
+current viewport is read. Outside these panes, approval visibility depends on
+what the CLI persists in its rollout.
+
 ### Options
 
 | Option | Default | |

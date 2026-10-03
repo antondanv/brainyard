@@ -26,8 +26,10 @@ import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
 import { BRAINS } from './brains/info.js';
+import { codexPaneStates, codexRolloutState } from './codex-live.js';
 import { oneLine } from './humanize.js';
 import { resolveBrain } from './options.js';
+import type { PaneSettings } from './panes.js';
 import { capture, resolveCommand } from './process.js';
 import type { BrainId } from './types.js';
 import { BRAIN_IDS } from './types.js';
@@ -153,6 +155,8 @@ export interface LiveOptions {
   brains?: ReadonlyArray<BrainId | string>;
   /** Read these stores instead of the defaults (tests). */
   homes?: Partial<Record<BrainId, string>>;
+  /** Check current Codex approval dialogs in this Brainyard tmux server. Default: rollout evidence only. */
+  panes?: PaneSettings;
   command?: string | string[];
   env?: NodeJS.ProcessEnv;
 }
@@ -164,8 +168,8 @@ export interface LiveOptions {
  * - Claude Code says it outright: `claude agents --json` lists interactive
  *   and background sessions with `busy`, `waiting` (and why) or `idle`.
  * - Codex writes a turn into its rollout as it goes and closes it with
- *   `task_complete`: a turn still open is work in progress, and an approval
- *   request as the last event means it waits for you.
+ *   `task_complete`: a turn still open is work in progress; unanswered
+ *   requests mean it waits for you. `panes` also checks native approval dialogs.
  * - Antigravity keeps a status per conversation in its summaries database.
  *
  * A CLI that is not installed, or a store that is not there, adds nothing.
@@ -180,7 +184,11 @@ export async function liveSessions(options: LiveOptions = {}): Promise<SessionIn
     brains.has('codex') ? codexLive(homes.codex ?? codexHome(env)) : [],
     brains.has('antigravity') ? agyLive(homes.antigravity ?? agyHome()) : [],
   ]);
-  return [...claude, ...codex, ...agy].filter(
+  const codexStates =
+    brains.has('codex') && options.panes
+      ? await codexPaneStates(codex, { ...options.panes, env: { ...env, ...options.panes.env } })
+      : codex;
+  return [...claude, ...codexStates, ...agy].filter(
     (session) => !places || (session.cwd !== undefined && places.has(session.cwd)),
   );
 }
@@ -209,7 +217,6 @@ async function claudeLive(options: LiveOptions, env: NodeJS.ProcessEnv): Promise
 
 /** A Codex turn with no write for this long is not running: the CLI was closed or killed mid-turn. */
 const CODEX_STALE_MS = 10 * 60 * 1000;
-const CODEX_WAITING = /approval_request|request_user_input|elicitation/;
 
 function codexLive(home: string): SessionInfo[] {
   const now = Date.now();
@@ -229,34 +236,19 @@ function codexLive(home: string): SessionInfo[] {
     if (payload.thread_source === 'subagent' || 'subagent' in record(payload.source)) continue;
     const id = text(payload.id) || text(payload.session_id);
     if (!id) continue;
-    let state: 'busy' | 'waiting' | undefined;
-    for (const entry of jsonLines(readRange(path, Math.max(0, statSize(path) - 32 * 1024), 32 * 1024), true)) {
-      if (entry.type !== 'event_msg') continue;
-      const kind = text(record(entry.payload).type);
-      if (kind === 'task_started') state = 'busy';
-      else if (kind === 'task_complete' || kind === 'turn_aborted') state = undefined;
-      else if (CODEX_WAITING.test(kind)) state = 'waiting';
-    }
+    const state = codexRolloutState(path);
     if (!state) continue;
     const session: SessionInfo = {
       brain: 'codex',
       id,
       interactive: text(payload.source) !== 'exec',
       updatedAt: new Date(mtime).toISOString(),
-      live: { status: state, kind: 'interactive', ...(state === 'waiting' ? { waitingFor: 'approval' } : {}) },
+      live: { ...state, kind: 'interactive' },
     };
     if (text(payload.cwd)) session.cwd = text(payload.cwd);
     out.push(session);
   }
   return out;
-}
-
-function statSize(path: string): number {
-  try {
-    return statSync(path).size;
-  } catch {
-    return 0;
-  }
 }
 
 async function agyLive(home: string): Promise<SessionInfo[]> {
