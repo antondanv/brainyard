@@ -79,4 +79,13 @@ export {
 } from './status.js';
 export { EventStream } from './stream.js';
 export * from './types.js';
+export {
+  type BrainUsage,
+  type ModelUsage,
+  type SessionUsage,
+  type UsageBrainId,
+  type UsageOptions,
+  type UsageReport,
+  usage,
+} from './usage.js';
 export { VERSION } from './version.js';

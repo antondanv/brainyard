@@ -264,6 +264,24 @@ an hour. When a CLI does not answer, a built-in list is used and marked `source:
   unknown (`costUsd: null`), not free. Every step reports only its own tokens, so they add up;
   reasoning is counted apart from output there, and Brainyard adds it to `outputTokens`.
 
+### Persisted usage differs from live result events
+
+- Claude transcript counters are per message id; repeated fragments replace the
+  previous counters for that message. The transcript does not supply the live
+  `rate_limit_event` or a trustworthy saved session dollar total.
+- Codex `token_count.info.total_token_usage` is cumulative. Adding snapshots doubles
+  the session. `turn_context.model` prices increments when the model changes; a
+  corrected/decreased total loses its historical model assignment, so its cost is unknown.
+- Antigravity's summary database contains no counters. Its per-conversation SQLite
+  store does: `gen_metadata.data` is protobuf `CortexStepGeneratorMetadata`, with
+  `chat_model.usage` and `response_model`. Brainyard reads the counters and skips
+  unrelated fields or unreadable generations. Legacy conversations can have no such store.
+  Subscription quotas are exposed through the [interactive `/usage` panel](https://antigravity.google/docs/cli/commands/usage/).
+- OpenCode records tokens in assistant messages and step-finish parts. They describe
+  the same work: count messages, not both. Input already excludes cache; reasoning is
+  separate from output, so Brainyard adds it to output. A catalog with no prices records
+  zero dollars even for a paid provider; Brainyard requires `prices` to estimate that cost.
+
 ## Permissions and sandboxes
 
 ### `workspace` means four different mechanisms

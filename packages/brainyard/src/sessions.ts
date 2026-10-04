@@ -443,6 +443,14 @@ const HEAD_BYTES = 96 * 1024;
 const TAIL_BYTES = 256 * 1024;
 
 function claudeSessions(home: string, places: ReadonlySet<string>): SessionInfo[] {
+  return claudeSessionFiles(home, places).flatMap((path) => {
+    const session = claudeTranscript(path);
+    return session ? [session] : [];
+  });
+}
+
+/** @internal Shared discovery; usage readers need the whole transcript. */
+export function claudeSessionFiles(home: string, places: ReadonlySet<string>): string[] {
   const root = join(home, 'projects');
   const dirs = new Set<string>();
   for (const place of places) {
@@ -450,12 +458,11 @@ function claudeSessions(home: string, places: ReadonlySet<string>): SessionInfo[
     if (name.length <= 200) dirs.add(join(root, name));
     else for (const entry of listDir(root)) if (entry.startsWith(name.slice(0, 200))) dirs.add(join(root, entry));
   }
-  const out: SessionInfo[] = [];
+  const out: string[] = [];
   for (const dir of dirs) {
     for (const file of listDir(dir)) {
       if (!file.endsWith('.jsonl')) continue;
-      const session = claudeTranscript(join(dir, file));
-      if (session) out.push(session);
+      out.push(join(dir, file));
     }
   }
   return out;
@@ -641,7 +648,7 @@ function codexNames(path: string): Map<string, string> {
 }
 
 /** `sessions/YYYY/MM/DD/rollout-*.jsonl`, newest day first. */
-function rolloutFiles(root: string): string[] {
+export function rolloutFiles(root: string): string[] {
   const files: string[] = [];
   const walk = (dir: string, depth: number) => {
     const entries = listDir(dir).sort().reverse();
@@ -680,7 +687,7 @@ async function agySessions(home: string, places: ReadonlySet<string>): Promise<S
   return [...fromDb, ...fromHistory.filter((session) => !known.has(session.id))];
 }
 
-type Database = {
+export type Database = {
   prepare(sql: string): { all(...params: unknown[]): unknown[] };
   close(): void;
 };
@@ -688,7 +695,7 @@ type Database = {
 let sqlite: Promise<((path: string) => Database) | undefined> | undefined;
 
 /** `node:sqlite` where this Node has it, quietly: Node 22 announces it as experimental on stderr. */
-function openSqlite(): Promise<((path: string) => Database) | undefined> {
+export function openSqlite(): Promise<((path: string) => Database) | undefined> {
   sqlite ??= (async () => {
     const emit = process.emitWarning;
     process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {

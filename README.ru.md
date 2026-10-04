@@ -213,6 +213,57 @@ tmux Brainyard; `panes: { socket }` выбирает отдельный серв
 текущий экран панели. Вне этих панелей видимость запросов разрешения зависит от
 того, что CLI записывает в журнал.
 
+### Лимиты подписки и использование сохранённых сессий
+
+```ts
+import { usage } from '@antondanv/brainyard';
+
+const report = await usage({ cwd: './app', prices }); // ваши цены моделей за миллион токенов
+for (const session of report.sessions) {
+  console.log(session.brain, session.id, session.usage, session.costUsd, session.costSource);
+}
+for (const brain of report.brains) {
+  console.log(brain.brain, brain.limits, brain.limitsObservedAt, brain.detail);
+}
+
+const one = await usage({ cwd: './app', brains: ['codex'], sessionId, prices });
+const limits = await usage({ brains: ['claude'], live: true, limit: 0 });
+```
+
+`usage()` читает сохранённые сессии `cwd` (по умолчанию — текущей папки) для Claude
+Code, Codex, Antigravity и OpenCode. Как `sessions()`, исключает headless-запуски без
+`headless: true`, возвращает не больше 200 сессий на CLI и принимает пути хранилищ
+через `homes`. `sessionId` выбирает конкретную сессию этой папки; `limit: 0` читает
+только лимиты аккаунта. Хранилище OpenCode — `$XDG_DATA_HOME/opencode` или
+`~/.local/share/opencode`.
+
+| CLI | Токены и стоимость сохранённых сессий | Лимиты подписки |
+|---|---|---|
+| Claude Code | Весь транскрипт, каждое сообщение считается один раз по id; оценка по `prices` | `rate_limit_event` при `live: true` |
+| Codex | Последний накопительный итог rollout; стоимость по модели каждого хода | Самые свежие снимки из всего хранилища аккаунта |
+| Antigravity | Метаданные генераций в `conversations/<id>.db`; оценка по `prices` | Через этот API недоступны; у CLI есть `/usage` в TUI |
+| OpenCode | Сообщения ассистента в `opencode.db`; положительная стоимость от CLI или оценка по `prices` | Зависят от провайдера; сохранённого снимка подписки нет |
+
+У окон есть доля `utilization` (`0.95` — 95%), необязательная длительность
+`windowMinutes`, время сброса `resetsAt` в Unix-секундах и `limitId` Codex для
+отдельных лимитов моделей. Рядом — источник и время наблюдения: старый снимок
+не подтверждает текущее состояние. Лимиты относятся к аккаунту и не зависят от
+выбранной папки или сессии.
+
+`live: true` делает один минимальный изолированный вызов Claude, по умолчанию с
+таймаутом 30 секунд; вызов может стоить денег. Сохранённые разговоры не продолжает.
+Даже при отказе возвращает полученные окна вместе с `error`. Вызов настраивается
+через `commands`, `env`, `timeoutMs` и `signal`. Без `live` обращений к модели нет.
+
+Если данных нет, `usage` или `limits` равны `null`, а причину объясняют
+`unavailableReason` или `limitsUnavailable`/`detail`. Старые разговоры Antigravity
+без читаемых метаданных генераций остаются неизвестными. `byModel` разбивает токены
+и стоимость сессии по моделям. `prices` задаются как в `run()`; ключи OpenCode —
+`provider/model`. Если часть использования не удалось оценить, полная стоимость
+равна `null`. Провайдеры OpenCode без цен в каталоге могут записывать нулевую
+стоимость: при ненулевых токенах для неё тоже нужны `prices`. Оценка описывает
+использование моделей, а не платежи за подписку.
+
 ### Опции
 
 | Опция | По умолчанию | |

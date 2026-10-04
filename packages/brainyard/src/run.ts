@@ -474,5 +474,5 @@ export function run(options: RunOptions): Promise<RunResult> {
 
 /** @internal One-shot answers use the same machinery with isolation and a nudge for silent turns. */
 export function startAnswer(options: RunOptions, system: string | undefined): AgentRun {
-  return new Run(options, { kind: 'ask', ensureText: true, ...(system ? { system } : {}) });
+  return new Run(options, { kind: 'ask', ensureText: options.nudge !== false, ...(system ? { system } : {}) });
 }

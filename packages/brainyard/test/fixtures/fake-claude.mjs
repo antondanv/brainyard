@@ -221,19 +221,25 @@ switch (scenario) {
     await untilClosed();
     break;
   }
-  case 'limits-warning': {
+  case 'limits-warning':
+  case 'limits-rejected': {
+    const rejected = scenario === 'limits-rejected';
     out({
       type: 'rate_limit_event',
       rate_limit_info: {
-        status: 'allowed_warning',
+        status: rejected ? 'rejected' : 'allowed_warning',
         rateLimitType: 'five_hour',
         resetsAt: 1790719800,
         unifiedWindows: {
-          five_hour: { utilization: 0.91, resetsAt: 1790719800 },
+          five_hour: { utilization: rejected ? 1 : 0.91, resetsAt: 1790719800 },
           seven_day: { utilization: 0.4, resetsAt: 1791280800 },
         },
       },
     });
+    if (rejected) {
+      result("You've hit your session limit · resets 6:50pm", { is_error: true, api_error_status: 429 });
+      process.exit(1);
+    }
     say('fine');
     result('fine');
     await untilClosed();

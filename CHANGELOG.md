@@ -18,6 +18,12 @@ All notable changes to this project are documented here. The format follows
 - `ask()` with OpenCode deletes its session afterwards: OpenCode cannot be told not to keep one.
 - `hint()` reaches a working OpenCode agent: such a run goes through `opencode serve` instead of
   `opencode run`, which exits before it answers a message sent mid-turn.
+- `usage()` and its public report types: saved session tokens and model-aware cost
+  estimates for Claude Code, Codex and Antigravity, plus persisted tokens and reported
+  or estimated cost for OpenCode.
+- Codex subscription windows from rollout snapshots, with duration, reset time and
+  separate limit buckets; opt-in live Claude subscription windows, including rejected
+  calls. Unavailable data carries a reason and is never presented as zero usage.
 
 ### Changed
 

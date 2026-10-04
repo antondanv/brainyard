@@ -209,6 +209,54 @@ server as well, or supply `panes: { socket }` for a separate server. Only the
 current viewport is read. Outside these panes, approval visibility depends on
 what the CLI persists in its rollout.
 
+### Subscription limits and saved session usage
+
+```ts
+import { usage } from '@antondanv/brainyard';
+
+const report = await usage({ cwd: './app', prices }); // your dollars-per-million model prices
+for (const session of report.sessions) {
+  console.log(session.brain, session.id, session.usage, session.costUsd, session.costSource);
+}
+for (const brain of report.brains) {
+  console.log(brain.brain, brain.limits, brain.limitsObservedAt, brain.detail);
+}
+
+const one = await usage({ cwd: './app', brains: ['codex'], sessionId, prices });
+const limits = await usage({ brains: ['claude'], live: true, limit: 0 });
+```
+
+`usage()` reads saved sessions of `cwd` (the current folder by default), across
+Claude Code, Codex, Antigravity and OpenCode. Like `sessions()`, it excludes headless
+runs unless `headless: true`, returns at most 200 per CLI, and accepts store overrides
+in `homes`. `sessionId` selects a specific session in that folder; `limit: 0` reads only
+account limits. OpenCode's store is `$XDG_DATA_HOME/opencode` or `~/.local/share/opencode`.
+
+| CLI | Saved session tokens and cost | Subscription limits |
+|---|---|---|
+| Claude Code | Whole transcript, counted once per message id; estimate from `prices` | `rate_limit_event` with `live: true` |
+| Codex | Last cumulative rollout total; cost by each turn's model | Freshest rollout snapshots across the account's store |
+| Antigravity | Generation metadata in `conversations/<id>.db`; estimate from `prices` | Unavailable through this API; the CLI exposes `/usage` in its TUI |
+| OpenCode | Assistant messages in `opencode.db`; reported positive cost or estimate from `prices` | Provider-specific; no persisted subscription snapshot |
+
+Limits use fractional `utilization` (`0.95` means 95%), optional `windowMinutes`,
+Unix-second `resetsAt`, and Codex `limitId` for separate model buckets. Their source
+and observation time accompany the snapshot; an old snapshot is not a live check.
+Limits apply to the account and are independent of the requested folder or session.
+
+`live: true` makes one isolated, minimal Claude call with a 30-second timeout by
+default and can incur a charge. It keeps stored conversations intact. An unsuccessful
+call can still return windows alongside `error`. `commands`, `env`, `timeoutMs` and
+`signal` control that call. Without `live`, no inference call is made.
+
+`usage` and `limits` are `null` when unavailable, with `unavailableReason` or
+`limitsUnavailable`/`detail` explaining why. Older Antigravity conversations without
+readable generator metadata remain unknown. `byModel` splits each session's counters
+and costs. Pass `prices` as in `run()`; OpenCode model keys are `provider/model`.
+If any part cannot be priced, the total cost is `null`. OpenCode providers without
+catalog prices can record a zero cost, so a zero alongside nonzero tokens also needs
+`prices`. Estimates describe model usage; they do not measure subscription payments.
+
 ### Options
 
 | Option | Default | |

@@ -125,13 +125,16 @@ export interface RunError {
   resetsAt?: string;
 }
 
-/** Subscription window usage, as reported by the CLI (Claude Code only today). */
+/** Subscription window usage, as reported by a CLI. */
 export interface LimitWindow {
   window: string;
-  /** 0..1 */
+  /** Fraction used: 1 means 100%. */
   utilization: number;
   /** Unix seconds. */
   resetsAt?: number;
+  windowMinutes?: number;
+  /** Codex can report separate buckets for different models. */
+  limitId?: string;
 }
 
 export interface RunResult {
