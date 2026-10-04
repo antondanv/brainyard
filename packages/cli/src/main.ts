@@ -12,7 +12,6 @@ import {
   askAll,
   BRAIN_IDS,
   BRAINS,
-  type BrainStatus,
   BrainyardError,
   type Catalog,
   type McpServer,
@@ -25,6 +24,7 @@ import {
 import { accessArg, brainArg, Failure, parse, promptFrom, secondsArg, UsageError } from './args.js';
 import { paneCommand, panesCommand } from './panes.js';
 import { sessionsCommand, stopCommand } from './sessions.js';
+import { AVAILABILITY, details } from './status.js';
 import { feedLine, pad, paint } from './term.js';
 import { usageCommand } from './usage.js';
 import { VERSION } from './version.js';
@@ -141,15 +141,6 @@ async function main(argv: string[]): Promise<number> {
 // ---------------------------------------------------------------------------
 // status
 // ---------------------------------------------------------------------------
-const AVAILABILITY: Record<BrainStatus['availability'], [word: string, colour: keyof ReturnType<typeof paint>]> = {
-  ready: ['ready', 'green'],
-  needs_login: ['sign in', 'yellow'],
-  limited: ['limited', 'yellow'],
-  unknown: ['unknown', 'yellow'],
-  not_installed: ['not installed', 'gray'],
-  error: ['error', 'red'],
-};
-
 async function statusCommand(args: string[]): Promise<number> {
   const { values } = parse(args, {
     json: { type: 'boolean' },
@@ -183,7 +174,7 @@ async function statusCommand(args: string[]): Promise<number> {
     const [word, colour] = AVAILABILITY[brain.availability];
     const tint = out[colour];
     lines.push(
-      `  ${tint('●')} ${pad(out.bold(brain.label), labelWidth)}  ${pad(out.dim(brain.version ?? '—'), 9)} ${pad(tint(word), 13)} ${details(brain)}`,
+      `  ${tint('●')} ${pad(out.bold(brain.label), labelWidth)}  ${pad(out.dim(brain.version ?? '—'), 9)} ${pad(tint(word), 13)} ${details(brain, out)}`,
     );
     const windows = brain.ping?.limits ?? [];
     if (windows.length > 0) {
@@ -198,32 +189,6 @@ async function statusCommand(args: string[]): Promise<number> {
   lines.push(out.dim(`  ${report.ready.length} of ${report.brains.length} ready · ${seconds}s`) + tail);
   process.stdout.write(`${lines.join('\n')}\n`);
   return healthy ? 0 : 1;
-}
-
-function details(brain: BrainStatus): string {
-  const arrow = out.dim('→');
-  switch (brain.availability) {
-    case 'not_installed':
-      return `${arrow} ${brain.fix ?? ''}`;
-    case 'needs_login':
-      return `not signed in ${arrow} ${brain.fix ?? ''}`;
-    case 'limited':
-    case 'error':
-      return `${brain.ping?.error?.message ?? brain.summary} ${brain.fix ? `${arrow} ${brain.fix}` : ''}`.trim();
-    case 'unknown':
-      return `sign-in not confirmed${brain.auth.detail ? ` (${brain.auth.detail})` : ''}`;
-    default: {
-      if (brain.ping?.ok) {
-        const cost = brain.ping.costUsd === null ? '' : ` · $${brain.ping.costUsd.toFixed(4)}`;
-        return `answered "${brain.ping.text}" in ${(brain.ping.ms / 1000).toFixed(1)}s${cost}${brain.ping.model ? ` · ${brain.ping.model}` : ''}`;
-      }
-      const how = [brain.auth.method, brain.auth.plan].filter(Boolean).join(', ');
-      const parts = [`signed in${how ? ` with ${how}` : ''}${brain.auth.account ? ` as ${brain.auth.account}` : ''}`];
-      if (brain.defaultModel) parts.push(`default model ${brain.defaultModel}`);
-      if (!how && brain.auth.detail) parts.push(brain.auth.detail);
-      return parts.join(' · ');
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------

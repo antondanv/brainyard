@@ -18,10 +18,16 @@ export interface Paint {
   magenta(text: string): string;
   cyan(text: string): string;
   gray(text: string): string;
+  /** Swapped foreground and background: the selected row of the app. */
+  inverse(text: string): string;
 }
 
 export function paint(stream: NodeJS.WriteStream, force?: boolean): Paint {
-  const on = force ?? colourful(stream);
+  return palette(force ?? colourful(stream));
+}
+
+/** Colours on or off, whatever the output is: the app draws the same frame for a terminal and a browser. */
+export function palette(on: boolean): Paint {
   const wrap = (open: number, close: number) => (text: string) =>
     on ? `\u001b[${open}m${text}\u001b[${close}m` : text;
   return {
@@ -34,6 +40,7 @@ export function paint(stream: NodeJS.WriteStream, force?: boolean): Paint {
     magenta: wrap(35, 39),
     cyan: wrap(36, 39),
     gray: wrap(90, 39),
+    inverse: wrap(7, 27),
   };
 }
 

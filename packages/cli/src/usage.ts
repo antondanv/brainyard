@@ -46,33 +46,41 @@ function noLimits(brain: BrainUsage): string {
   return brain.detail ?? (brain.limits ? 'no windows' : 'unknown');
 }
 
+/**
+ * One CLI's subscription windows, a model pool to a line (Antigravity's model
+ * groups and Codex's separate buckets each have windows of their own), with
+ * how long ago they were seen; or why there are none. `why` words the reason.
+ */
+export function poolLines(
+  brain: BrainUsage,
+  c: Paint,
+  now = Date.now(),
+  why: (brain: BrainUsage) => string = noLimits,
+): string[] {
+  if (!brain.limits || brain.limits.length === 0) return [c.dim(why(brain))];
+  const pools = new Map<string, LimitWindow[]>();
+  for (const limit of brain.limits) {
+    const pool = limit.group ?? limit.limitId ?? '';
+    pools.set(pool, [...(pools.get(pool) ?? []), limit]);
+  }
+  const seen = brain.limitsObservedAt ? ago(Date.parse(brain.limitsObservedAt), now) : 'now';
+  const age = seen === 'now' ? '' : c.dim(`   seen ${seen} ago`);
+  const lines = [...pools].map(([pool, limits], index) => {
+    const name = pools.size > 1 && pool ? `${pool}: ` : '';
+    const windows = limits.map((limit) => windowText(limit, c, now)).join('   ');
+    return `${name}${windows}${index === 0 ? age : ''}`;
+  });
+  if (brain.error) lines.push(c.yellow(brain.error.message));
+  return lines;
+}
+
 /** Each CLI's subscription windows, a model pool to a line, or why there are none. */
 export function limitLines(brains: readonly BrainUsage[], c: Paint, now = Date.now()): string[] {
-  const lines: string[] = [];
-  for (const brain of brains) {
-    const label = pad(BRAINS[brain.brain].label, 12);
-    if (!brain.limits || brain.limits.length === 0) {
-      lines.push(`${label} ${c.dim(noLimits(brain))}`);
-      continue;
-    }
-    // Antigravity's model groups and Codex's separate buckets each have windows of their own.
-    const pools = new Map<string, LimitWindow[]>();
-    for (const limit of brain.limits) {
-      const pool = limit.group ?? limit.limitId ?? '';
-      pools.set(pool, [...(pools.get(pool) ?? []), limit]);
-    }
-    const seen = brain.limitsObservedAt ? ago(Date.parse(brain.limitsObservedAt), now) : 'now';
-    const age = seen === 'now' ? '' : c.dim(`   seen ${seen} ago`);
-    let first = true;
-    for (const [pool, limits] of pools) {
-      const name = pools.size > 1 && pool ? `${pool}: ` : '';
-      const windows = limits.map((limit) => windowText(limit, c, now)).join('   ');
-      lines.push(`${first ? label : ' '.repeat(12)} ${name}${windows}${first ? age : ''}`);
-      first = false;
-    }
-    if (brain.error) lines.push(`${' '.repeat(12)} ${c.yellow(brain.error.message)}`);
-  }
-  return lines;
+  return brains.flatMap((brain) =>
+    poolLines(brain, c, now).map(
+      (line, index) => `${index === 0 ? pad(BRAINS[brain.brain].label, 12) : ' '.repeat(12)} ${line}`,
+    ),
+  );
 }
 
 const sum = (list: readonly SessionUsage[], pick: (usage: Usage) => number) =>

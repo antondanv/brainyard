@@ -38,7 +38,8 @@ function newestPerBrain(list: readonly SessionInfo[], limit: number): SessionInf
     });
 }
 
-function state(session: SessionInfo, c: Paint): string {
+/** What a running session does now, as a mark after its title: ` ● working`, ` ● waiting: …`. */
+export function liveMark(session: SessionInfo, c: Paint): string {
   const live = session.live;
   if (!live) return '';
   if (live.status === 'busy') return c.cyan(' ● working');
@@ -70,7 +71,7 @@ export function sessionLines(
       .map((tag) => c.dim(` ${tag}`))
       .join('');
     const pane = options.panes?.get(session.id);
-    return `${pad(BRAINS[session.brain].label, 12)} ${c.dim(session.id.slice(0, 8))}  ${pad(age, 8)} ${folder}${title}${tags}${state(session, c)}${pane ? c.dim(` ▣ ${pane}`) : ''}`;
+    return `${pad(BRAINS[session.brain].label, 12)} ${c.dim(session.id.slice(0, 8))}  ${pad(age, 8)} ${folder}${title}${tags}${liveMark(session, c)}${pane ? c.dim(` ▣ ${pane}`) : ''}`;
   });
 }
 
