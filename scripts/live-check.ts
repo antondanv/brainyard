@@ -38,6 +38,14 @@ const CHEAP: Record<BrainId, Pick<RunOptions, 'model' | 'effort'>> = {
   opencode: opencodeModel ? { model: opencodeModel } : {},
 };
 
+// A model that loops bills every step until something stops it (one did, 1.8M
+// tokens in five minutes): no live run gets longer than this.
+const LIMIT_MS = 5 * 60_000;
+const cheap = (brain: BrainId): Pick<RunOptions, 'model' | 'effort' | 'timeoutMs'> => ({
+  ...CHEAP[brain],
+  timeoutMs: LIMIT_MS,
+});
+
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { only: { type: 'string' } } });
 const only = values.only ? new Set(values.only.split(',')) : undefined;
 const wanted = positionals.length ? positionals.map((name) => brainId(name)) : undefined;
@@ -62,7 +70,7 @@ const failure = (result: RunResult) => `${result.error?.kind}: ${result.error?.m
 
 const checks: Record<string, Check> = {
   async ask(brain) {
-    const answer = await ask(brain, 'What is 17*3? Reply with the number only.', CHEAP[brain]);
+    const answer = await ask(brain, 'What is 17*3? Reply with the number only.', cheap(brain));
     return {
       ok: answer.text.includes('51'),
       note: `"${answer.text}" in ${(answer.durationMs / 1000).toFixed(1)}s`,
@@ -72,7 +80,7 @@ const checks: Record<string, Check> = {
 
   async dashes(brain) {
     // A prompt that starts like a flag must reach the model as text.
-    const answer = await ask(brain, '--- front matter ---\nReply with exactly: ok', CHEAP[brain]);
+    const answer = await ask(brain, '--- front matter ---\nReply with exactly: ok', cheap(brain));
     return { ok: /ok/i.test(answer.text), note: `"${answer.text}"`, cost: answer.costUsd ?? 0 };
   },
 
@@ -81,7 +89,7 @@ const checks: Record<string, Check> = {
     const result = await run({
       brain,
       cwd,
-      ...CHEAP[brain],
+      ...cheap(brain),
       prompt: 'Create a file hello.txt containing the word hi, then reply with one short line.',
     });
     const file = join(cwd, 'hello.txt');
@@ -95,7 +103,7 @@ const checks: Record<string, Check> = {
     const agent = start({
       brain,
       cwd: dir(),
-      ...CHEAP[brain],
+      ...cheap(brain),
       prompt: 'Create hello.txt containing hi, then run `ls` with the shell, then reply with a one-line summary.',
     });
     let sent = false;
@@ -115,12 +123,12 @@ const checks: Record<string, Check> = {
   async resume(brain) {
     const cwd = dir();
     const word = `PAPAYA${randomBytes(2).toString('hex').toUpperCase()}`;
-    const first = await run({ brain, cwd, ...CHEAP[brain], prompt: `Remember the code word ${word}. Reply with OK.` });
+    const first = await run({ brain, cwd, ...cheap(brain), prompt: `Remember the code word ${word}. Reply with OK.` });
     if (!first.ok || !first.sessionId) return { ok: false, note: `first turn: ${failure(first)}`, cost: spent(first) };
     const second = await run({
       brain,
       cwd,
-      ...CHEAP[brain],
+      ...cheap(brain),
       resume: first.sessionId,
       prompt: 'What code word did I ask you to remember? Reply with the word only.',
     });
@@ -133,7 +141,7 @@ const checks: Record<string, Check> = {
     const result = await run({
       brain,
       cwd: dir(),
-      ...CHEAP[brain],
+      ...cheap(brain),
       mcpServers: { brainyard_demo: { command: process.execPath, args: [server], env: { SECRET_WORD: word } } },
       prompt:
         'Call the MCP tool secret_word from the brainyard_demo server and reply with exactly the word it returns.',
@@ -154,7 +162,7 @@ const checks: Record<string, Check> = {
       brain,
       cwd,
       access: 'workspace',
-      ...CHEAP[brain],
+      ...cheap(brain),
       prompt: [
         'Step 1: create inside.txt containing ok with your file tool.',
         `Step 2: run the shell command: node -e "console.log(${number} * 2)" and report its output.`,
@@ -177,7 +185,7 @@ const checks: Record<string, Check> = {
       brain,
       cwd: readonlyDir,
       access: 'readonly',
-      ...CHEAP[brain],
+      ...cheap(brain),
       prompt: 'Create probe.txt containing ok, then reply with one line. Do not try workarounds.',
     });
     cost += spent(readonly);
