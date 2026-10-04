@@ -132,13 +132,57 @@ session 32a4caae-… · continue: brainyard run claude --resume 32a4caae-… "�
 `ask` и `run` читают stdin из пайпа и дописывают его к промпту; для этого они ждут конца ввода,
 поэтому скрипту, который оставляет stdin открытым, нужен флаг `--no-stdin`.
 
+**Сессии и панели.** `sessions --live` показывает, что работает на машине прямо сейчас, во всех
+CLI, и чего оно ждёт. Панель — сессия CLI в tmux, которая переживает терминал: её запускают,
+читают её экран, печатают в неё, разворачивают на весь экран и закрывают; разговор остаётся,
+его можно продолжить. Панель называют по имени или по началу имени либо id её сессии.
+
+```console
+$ brainyard sessions --live
+Claude Code  2dcf2506  24m      ~/Projects/Brainyard  CLI for the whole API ● working ▣ claude-a6d7c603
+Claude Code  381a87e4  21h      ~/Projects/Treeyard   GitHub issues in the tree bg ● blocked
+
+$ pane=$(brainyard pane start claude --name "release notes" "Draft the 0.2 release notes")
+$ brainyard pane send $pane "Shorter, please"   # текст, потом Enter отдельной клавишей
+$ brainyard pane show $pane                     # её экран текстом
+$ brainyard pane attach $pane                   # на весь экран; Ctrl+Q — назад, она работает дальше
+$ brainyard pane close $pane
+closed claude-1a2b3c4d · resume: brainyard pane start claude --resume 7c919bf9-…
+```
+
+**Использование.** Сколько осталось в каждой подписке и сколько израсходовали сессии папки.
+Модель не вызывается, пока нет `--live`; `--prices` переводит токены в доллары.
+
+```console
+$ brainyard usage
+Subscription limits
+  Claude Code  not checked: --live asks with one tiny real call, which may cost
+  Codex        5h 52% · resets in 2h 36m   weekly 32% · resets in 5d 11h   seen 35m ago
+  Antigravity  Gemini Models: weekly 1% · resets in 3d 21h   5h 0% · resets in 1h 27m
+               Claude and GPT models: weekly 4% · resets in 3d 21h   5h 2% · resets in 2h 50m
+  OpenCode     Connect OpenCode Go in OpenCode or provide OPENCODE_API_KEY to read subscription usage.
+
+Sessions of ~/Projects/Brainyard
+                                                     input  output  cache  reasoning      cost
+  Claude Code  2dcf2506  now  CLI for the whole API    226    207k    31M       117k  no price
+  Codex        01a10742  35m  Usage in the API        825k    122k    17M        58k  no price
+  total                       2 sessions              825k    329k    48M       175k            + 2 without a price
+```
+
 | Команда | Что делает |
 |---|---|
 | `brainyard [status]` | Какие CLI установлены, залогинены и готовы (`--live`, `--models`, `--json`) |
 | `brainyard models [brain…]` | Модели и усилия каждого CLI |
 | `brainyard ask <brain\|all> <prompt>` | Один вопрос, один ответ (`--model`, `--effort`, `--system`, `--web`) |
 | `brainyard run <brain> <prompt>` | Агент с живой лентой (`--cwd`, `--resume`, `--access`, `--mcp`, `--no-web`, `--json`) |
+| `brainyard sessions [brain…]` | Сессии этой папки, работающие отмечены; `--live` — что работает на машине сейчас (`--all`, `--cwd`, `--json`) |
+| `brainyard stop <session>` | Останавливает фоновую сессию Claude Code; разговор остаётся |
+| `brainyard open <brain> [prompt]` | CLI здесь, сессией, к которой возвращаются (`--resume`, `--name`, `--bg`) |
+| `brainyard panes` | Живые панели: CLI, сессия, память, сколько молчит, папка (`--json`) |
+| `brainyard pane start\|attach\|show\|send\|close` | Сессия CLI в панели tmux, которая переживает терминал |
+| `brainyard usage [brain…]` | Лимиты подписок; токены и стоимость сессий этой папки (`--limits`, `--prices`, `--offline`, `--live`) |
 | `brainyard ui` | Панель на `http://127.0.0.1:4747` |
+| `brainyard serve` | Один HTTP API, для скриптов на любом языке (`--json`, `$BRAINYARD_TOKEN`) |
 
 Мозги называются `claude`, `codex`, `antigravity` (или `agy`) и `opencode`. Все флаги — в `brainyard help`.
 
@@ -355,8 +399,9 @@ Go. Без `live` обращений к модели нет.
 
 <img src="docs/assets/live-check.png" width="860" alt="Живая проверка: Claude Code и Antigravity ответили pong, Codex показывает ошибку — его модель недоступна с ChatGPT-аккаунтом; у Claude Code видны 5-часовое и недельное окна подписки">
 
-Под панелью небольшой HTTP API, который можно звать из любого языка:
-[`docs/http-api.md`](docs/http-api.md).
+Под панелью небольшой HTTP API, который можно звать из любого языка; `brainyard serve` поднимает
+его один, без браузера. Кроме вопросов и запусков он показывает сессии, останавливает фоновые,
+отдаёт использование и управляет панелями: [`docs/http-api.md`](docs/http-api.md).
 
 Этот API умеет запускать агентов на вашей машине, поэтому и охраняется соответственно: слушает
 только `127.0.0.1`, каждый вызов требует токен, напечатанный при старте, заголовок `Host`

@@ -128,13 +128,57 @@ session 32a4caae-… · continue: brainyard run claude --resume 32a4caae-… "�
 `ask` and `run` read piped stdin and append it to the prompt; that waits for end of input, so a
 script that leaves stdin open should pass `--no-stdin`.
 
+**Sessions and panes.** `sessions --live` shows what runs on the machine right now, in every
+CLI, and what it waits for. A pane is a CLI session in tmux that outlives the terminal: start
+it, read its screen, type into it, take it full screen and close it; the conversation stays
+resumable. A pane is named by its name or the start of its name or session id.
+
+```console
+$ brainyard sessions --live
+Claude Code  2dcf2506  24m      ~/Projects/Brainyard  CLI for the whole API ● working ▣ claude-a6d7c603
+Claude Code  381a87e4  21h      ~/Projects/Treeyard   GitHub issues in the tree bg ● blocked
+
+$ pane=$(brainyard pane start claude --name "release notes" "Draft the 0.2 release notes")
+$ brainyard pane send $pane "Shorter, please"   # the text, then Enter as a key of its own
+$ brainyard pane show $pane                     # its screen as text
+$ brainyard pane attach $pane                   # full screen; Ctrl+Q — back, it keeps running
+$ brainyard pane close $pane
+closed claude-1a2b3c4d · resume: brainyard pane start claude --resume 7c919bf9-…
+```
+
+**Usage.** What each subscription has left, and what the folder's sessions used. No model is
+called unless you pass `--live`; `--prices` turns tokens into dollars.
+
+```console
+$ brainyard usage
+Subscription limits
+  Claude Code  not checked: --live asks with one tiny real call, which may cost
+  Codex        5h 52% · resets in 2h 36m   weekly 32% · resets in 5d 11h   seen 35m ago
+  Antigravity  Gemini Models: weekly 1% · resets in 3d 21h   5h 0% · resets in 1h 27m
+               Claude and GPT models: weekly 4% · resets in 3d 21h   5h 2% · resets in 2h 50m
+  OpenCode     Connect OpenCode Go in OpenCode or provide OPENCODE_API_KEY to read subscription usage.
+
+Sessions of ~/Projects/Brainyard
+                                                     input  output  cache  reasoning      cost
+  Claude Code  2dcf2506  now  CLI for the whole API    226    207k    31M       117k  no price
+  Codex        01a10742  35m  Usage in the API        825k    122k    17M        58k  no price
+  total                       2 sessions              825k    329k    48M       175k            + 2 without a price
+```
+
 | Command | What it does |
 |---|---|
 | `brainyard [status]` | Which CLIs are installed, signed in and ready (`--live`, `--models`, `--json`) |
 | `brainyard models [brain…]` | Models and efforts each CLI offers |
 | `brainyard ask <brain\|all> <prompt>` | One prompt, one answer (`--model`, `--effort`, `--system`, `--web`) |
 | `brainyard run <brain> <prompt>` | An agent with a live feed (`--cwd`, `--resume`, `--access`, `--mcp`, `--no-web`, `--json`) |
+| `brainyard sessions [brain…]` | Sessions of this folder, running ones marked; `--live` — what runs on the machine now (`--all`, `--cwd`, `--json`) |
+| `brainyard stop <session>` | Stops a Claude Code background session; its conversation stays |
+| `brainyard open <brain> [prompt]` | A CLI here, as a session you come back to (`--resume`, `--name`, `--bg`) |
+| `brainyard panes` | Live panes: CLI, session, memory, quiet time, folder (`--json`) |
+| `brainyard pane start\|attach\|show\|send\|close` | A CLI session in a tmux pane that outlives the terminal |
+| `brainyard usage [brain…]` | Subscription limits; tokens and cost of this folder's sessions (`--limits`, `--prices`, `--offline`, `--live`) |
 | `brainyard ui` | The dashboard on `http://127.0.0.1:4747` |
+| `brainyard serve` | The HTTP API alone, for scripts in any language (`--json`, `$BRAINYARD_TOKEN`) |
 
 Brains are `claude`, `codex`, `antigravity` (alias `agy`) and `opencode`. `brainyard help` lists every flag.
 
@@ -348,8 +392,9 @@ windows is used, or why a CLI did not answer:
 
 <img src="docs/assets/live-check.png" width="860" alt="Live check: Claude Code and Antigravity answered pong, Codex shows the error for a model its ChatGPT account cannot use; Claude Code also shows its 5-hour and 7-day subscription windows">
 
-The dashboard uses a small HTTP API you can call from any language:
-[`docs/http-api.md`](docs/http-api.md).
+The dashboard uses a small HTTP API you can call from any language; `brainyard serve` runs it
+alone, with no browser. Besides asks and runs, it lists sessions, stops background ones, reports
+usage and drives panes: [`docs/http-api.md`](docs/http-api.md).
 
 The API can start agents on your machine, so it is guarded like it: it listens on `127.0.0.1`,
 every call needs the token printed at start, the `Host` header must name the server (against

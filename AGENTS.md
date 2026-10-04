@@ -32,13 +32,16 @@ npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же д
   - `src/run.ts`, `ask.ts`, `status.ts`, `catalog.ts` — запуск, разовые ответы, статус, модели.
   - `src/sessions.ts`, `open.ts`, `panes.ts` — сохранённые сессии, интерактивный CLI, панели tmux.
   - `test/fixtures/` — фейковые claude, codex, agy и opencode; `test/helpers.ts` — общие и для тестов CLI.
-- `packages/cli/` — `@antondanv/brainyard-cli`: `src/main.ts` — команда `brainyard`,
-  `src/ui/` — дашборд и HTTP API. API берёт только из `@antondanv/brainyard`, как внешний
-  пользователь; чего не хватает — экспортируй из `packages/brainyard/src/index.ts` осознанно.
+- `packages/cli/` — `@antondanv/brainyard-cli`: `src/main.ts` — команда `brainyard` (диспетчер,
+  status, models, ask, run, open, ui и serve), `src/panes.ts`, `sessions.ts`, `usage.ts` — panes и
+  pane, sessions и stop, usage; `src/args.ts` — флаги, `src/format.ts` и `term.ts` — вывод;
+  `src/ui/` — дашборд и HTTP API. Тесты команды — `test/run-cli.ts`: он всегда задаёт тестовый
+  сокет tmux. API берёт только из `@antondanv/brainyard`, как внешний пользователь; чего не
+  хватает — экспортируй из `packages/brainyard/src/index.ts` осознанно.
 - CLI видит исходники API без сборки: `paths` в `tsconfig.json`, alias в `vitest.config.ts`.
   Сборка — сначала API, потом CLI по его `dist/`.
 - README, README.ru, CHANGELOG и LICENSE лежат в корне; в пакеты их копирует `prepack`.
-- `docs/gotchas.md` — причуды CLI; `docs/http-api.md` — HTTP API дашборда.
+- `docs/gotchas.md` — причуды CLI; `docs/http-api.md` — HTTP API (`brainyard serve` и дашборд).
 
 ## Правила
 

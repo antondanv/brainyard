@@ -29,6 +29,16 @@ All notable changes to this project are documented here. The format follows
   API. Both are metadata requests without inference, with timeouts and cancellation.
   `usage({ offline: true })` reads saved stores only. `LimitWindow` includes optional
   `group` and `label` for Antigravity's model pools.
+- The `brainyard` command covers the whole API: `panes` and `pane start|attach|show|send|close`
+  for CLI sessions in tmux panes, `sessions --live` (`--all` adds finished background sessions)
+  for what runs on the machine right now, `stop` for a Claude Code background session, and
+  `usage` for subscription limits and the tokens and cost of a folder's sessions. A pane is
+  named by its name or the start of its name or session id; `pane send` presses Enter as a key
+  of its own, so a CLI that reads a fast burst as a paste still sends the message.
+- `brainyard serve`: the HTTP API alone, with no browser. Its token can come from
+  `$BRAINYARD_TOKEN`, and `--json` prints `{url, port, token}` for the program that starts it.
+  The API adds `GET /api/sessions`, `GET /api/sessions/live`, `POST /api/sessions/:id/stop`,
+  `POST /api/usage` and panes: list, start, screen, send, resize and close.
 
 ### Changed
 
@@ -37,6 +47,8 @@ All notable changes to this project are documented here. The format follows
 - `sessions()` leaves out headless runs that are working right now unless `headless: true`, as
   it already did with saved ones.
 - A session id may contain `_` (OpenCode's ids are `ses_…`).
+- `brainyard serve` is no longer another name for `brainyard ui`: it opens no browser. Without
+  `--port`, both take 4747 or the next free port, and both stop on `SIGTERM` as on Ctrl+C.
 
 ### Fixed
 
