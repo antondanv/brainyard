@@ -11,6 +11,8 @@ const scenario = process.env.FAKE_SCENARIO ?? 'ok';
 const record = recorder(args);
 const out = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 const flag = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
+// Like the real CLI, the folder it works in is PWD, not the process's own cwd.
+const here = process.env.PWD || process.cwd();
 
 const MODELS = [
   ['opencode/big-pickle', { name: 'Big Pickle', variants: {} }],
@@ -52,7 +54,7 @@ if (args[0] !== 'run') {
     const store = openStore(join(home, 'opencode.db'));
     const resumed = flag('--session');
     const id = resumed ?? process.env.FAKE_SESSION_ID ?? 'ses_fakeTui0000000000000001';
-    if (!resumed) store.session({ id, directory: process.cwd(), title: `New session - ${new Date().toISOString()}` });
+    if (!resumed) store.session({ id, directory: here, title: `New session - ${new Date().toISOString()}` });
     const prompt = args.find((arg) => arg.startsWith('--prompt='))?.slice('--prompt='.length);
     if (prompt) store.message({ session: id, role: 'user', text: prompt });
     store.close();
@@ -102,7 +104,7 @@ switch (scenario) {
   case 'ok': {
     step();
     say('I will write the file first.');
-    const file = join(process.cwd(), 'hello.txt');
+    const file = join(here, 'hello.txt');
     writeFileSync(file, 'hi');
     tool(
       'write',
@@ -167,7 +169,7 @@ switch (scenario) {
   }
   case 'cutoff': {
     step();
-    tool('read', { filePath: join(process.cwd(), 'a.txt') }, { output: 'a' });
+    tool('read', { filePath: join(here, 'a.txt') }, { output: 'a' });
     finish('tool-calls');
     break;
   }

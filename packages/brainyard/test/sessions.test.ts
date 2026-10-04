@@ -779,7 +779,7 @@ describe('open', () => {
       homes: { opencode: home },
     });
     expect(result).toMatchObject({ ok: true, sessionId: 'ses_fromTui' });
-    expect(calls.read().argv).toEqual(['--prompt=Собери сайт']);
+    expect(calls.read()).toMatchObject({ argv: ['--prompt=Собери сайт'], env: { PWD: cwd } });
     const [found] = await sessions({ cwd, brains: ['opencode'], homes: { opencode: home }, live: false });
     expect(found).toMatchObject({ id: 'ses_fromTui', title: 'Собери сайт', titleSource: 'prompt' });
   });

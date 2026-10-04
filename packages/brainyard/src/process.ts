@@ -170,6 +170,15 @@ function track(child: ChildProcess): void {
   }
 }
 
+/**
+ * The environment of a child that starts in `cwd`. A shell sets PWD on every
+ * `cd`; a child started elsewhere would inherit ours instead, and OpenCode
+ * takes its working folder from PWD, not from the process.
+ */
+function childEnv(env: NodeJS.ProcessEnv, cwd: string): NodeJS.ProcessEnv {
+  return { ...env, PWD: cwd };
+}
+
 export interface SpawnOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
@@ -187,7 +196,7 @@ export function spawnCommand(command: Command, args: readonly string[], options:
     ].join(' ');
     child = spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"${line}"`], {
       cwd: options.cwd,
-      env: options.env,
+      env: childEnv(options.env, options.cwd),
       stdio,
       windowsHide: true,
       windowsVerbatimArguments: true,
@@ -195,7 +204,7 @@ export function spawnCommand(command: Command, args: readonly string[], options:
   } else {
     child = spawn(command.file, [...command.args, ...args], {
       cwd: options.cwd,
-      env: options.env,
+      env: childEnv(options.env, options.cwd),
       stdio,
       windowsHide: true,
       detached: !WINDOWS,
@@ -224,12 +233,16 @@ export function spawnInteractive(
     ].join(' ');
     return spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"${line}"`], {
       cwd: options.cwd,
-      env: options.env,
+      env: childEnv(options.env, options.cwd),
       stdio: 'inherit',
       windowsVerbatimArguments: true,
     });
   }
-  return spawn(command.file, [...command.args, ...args], { cwd: options.cwd, env: options.env, stdio: 'inherit' });
+  return spawn(command.file, [...command.args, ...args], {
+    cwd: options.cwd,
+    env: childEnv(options.env, options.cwd),
+    stdio: 'inherit',
+  });
 }
 
 // Batch files go through `cmd.exe /d /s /c "…"`, quoted the way cross-spawn

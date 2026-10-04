@@ -396,6 +396,8 @@ describe('run() with OpenCode', () => {
     );
     expect(result.events.some((e) => e.kind === 'thinking' && !e.feed)).toBe(true);
     const call = calls.read();
+    // OpenCode works in PWD, not in the process's cwd: an inherited PWD would put it in our folder.
+    expect(call.env.PWD).toBe(cwd);
     expect(call.stdin).toEqual(['fix it']);
     expect(call.argv).toEqual(expect.arrayContaining(['run', '--title=', '--auto', '--thinking']));
     expect(JSON.parse(call.env.OPENCODE_CONFIG_CONTENT ?? '{}').experimental).toEqual({ continue_loop_on_deny: true });
