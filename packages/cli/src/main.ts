@@ -25,8 +25,9 @@ import {
   start,
   status,
 } from '@antondanv/brainyard';
-import { accessArg, brainArg, parse, promptFrom, secondsArg, UsageError } from './args.js';
+import { accessArg, brainArg, Failure, parse, promptFrom, secondsArg, UsageError } from './args.js';
 import { ago } from './format.js';
+import { paneCommand, panesCommand } from './panes.js';
 import { feedLine, pad, paint } from './term.js';
 import { VERSION } from './version.js';
 
@@ -43,6 +44,10 @@ ${out.bold('Usage')}
   brainyard run <brain> <prompt>     run an agent with a live feed; type to steer it
   brainyard sessions [brain...]      sessions of this folder in every CLI, running ones marked
   brainyard open <brain> [prompt]    open a CLI here as a session you can come back to
+  brainyard panes                    CLI sessions in tmux panes, which outlive this terminal
+  brainyard pane start <brain> …     open a CLI in a new pane, as open does; prints the pane's name
+  brainyard pane attach <pane>       the pane full screen; Ctrl+Q — back
+  brainyard pane show|send|close …   print its screen · type into it · end it (the session stays)
   brainyard ui                       local dashboard: status, models and a playground
 
 ${out.bold('Brains')}  claude (Claude Code) · codex (Codex) · antigravity (Antigravity, alias agy) · opencode (OpenCode)
@@ -58,6 +63,13 @@ ${out.bold('run')}      --cwd <dir>  --model <m>  --effort <e>  --resume <sessio
 ${out.bold('sessions')} --cwd <dir>  --headless  --limit <n>  --json
 ${out.bold('open')}     --cwd <dir>  --resume <session>  --name <name>  --system <text>  --model <m>  --effort <e>
          --mode <permission mode>  --worktree [name]  --bg (Claude Code)  --json
+${out.bold('panes')}    --json
+${out.bold('pane')}     start <brain> [prompt]: open's flags but --bg, and --label <text>  --width <n>  --height <n>
+                 --attach  --json
+         show <pane>: --scroll <rows>  --json
+         send <pane> [text|-]: Enter after the text unless --no-enter; --key <name> (repeatable):
+                 enter, esc, tab, shift-tab, up, down, left, right, backspace, ctrl-<letter>…
+         <pane> is its name, or the start of its name or of its session's id
 ${out.bold('ui')}       --port <n> (4747)  --host <addr> (127.0.0.1)  --token <t>  --no-open
 
 ${out.bold('Examples')}
@@ -68,6 +80,7 @@ ${out.bold('Examples')}
   brainyard run codex --resume <session-id> "Now make it pass"
   brainyard open claude --name "auth refactor" "Plan the OAuth migration"
   brainyard sessions --cwd ~/code/app
+  brainyard pane send claude-1a2b3c4d "Run the tests"
 
 Docs: https://github.com/antondanv/brainyard`;
 
@@ -89,6 +102,10 @@ async function main(argv: string[]): Promise<number> {
       return sessionsCommand(rest);
     case 'open':
       return openCommand(rest);
+    case 'panes':
+      return panesCommand(rest);
+    case 'pane':
+      return paneCommand(rest);
     case 'ui':
     case 'serve':
       return uiCommand(rest);
@@ -580,6 +597,12 @@ main(process.argv.slice(2)).then(
     if (error instanceof UsageError) {
       process.stderr.write(`${err.red(`brainyard: ${error.message}`)}\n${err.dim('see: brainyard help')}\n`);
       process.exitCode = 2;
+      return;
+    }
+    if (error instanceof Failure) {
+      process.stderr.write(`${err.red(`brainyard: ${error.message}`)}\n`);
+      if (error.fix) process.stderr.write(`${err.dim(`→ ${error.fix}`)}\n`);
+      process.exitCode = 1;
       return;
     }
     if (error instanceof BrainyardError) {

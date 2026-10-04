@@ -1,7 +1,8 @@
 /** Terminal output without a dependency: colours honour NO_COLOR and FORCE_COLOR. */
 import type { AgentEvent } from '@antondanv/brainyard';
 
-function enabled(stream: NodeJS.WriteStream): boolean {
+/** Whether colours go to this stream. */
+export function colourful(stream: NodeJS.WriteStream): boolean {
   if (process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== '') return false;
   if (process.env.FORCE_COLOR !== undefined && process.env.FORCE_COLOR !== '0') return true;
   return stream.isTTY === true && process.env.TERM !== 'dumb';
@@ -20,7 +21,7 @@ export interface Paint {
 }
 
 export function paint(stream: NodeJS.WriteStream, force?: boolean): Paint {
-  const on = force ?? enabled(stream);
+  const on = force ?? colourful(stream);
   const wrap = (open: number, close: number) => (text: string) =>
     on ? `\u001b[${open}m${text}\u001b[${close}m` : text;
   return {
@@ -36,12 +37,18 @@ export function paint(stream: NodeJS.WriteStream, force?: boolean): Paint {
   };
 }
 
+// SGR colours (tmux writes underline styles with colons) and OSC sequences such as hyperlinks.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes is the point.
-const ANSI = /\u001b\[[0-9;]*m/g;
+const ANSI = /\u001b\[[0-9;:]*m|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
+
+/** The text without colour codes. */
+export function plain(text: string): string {
+  return text.replace(ANSI, '');
+}
 
 /** Visible width, ignoring colour codes. */
 export function width(text: string): number {
-  return [...text.replace(ANSI, '')].length;
+  return [...plain(text)].length;
 }
 
 export function pad(text: string, size: number): string {

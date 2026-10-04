@@ -6,6 +6,15 @@ import { type Access, BRAIN_IDS, type BrainId, brainId } from '@antondanv/brainy
 /** A mistake in how the command was called: exit code 2 and a pointer to the help. */
 export class UsageError extends Error {}
 
+/** The command could not do what was asked (no such pane, nothing running): exit code 1. */
+export class Failure extends Error {
+  fix?: string;
+  constructor(message: string, fix?: string) {
+    super(message);
+    if (fix) this.fix = fix;
+  }
+}
+
 export function parse<T extends NonNullable<Parameters<typeof parseArgs>[0]>['options']>(args: string[], options: T) {
   try {
     return parseArgs({ args, options, allowPositionals: true, strict: true });
@@ -34,6 +43,13 @@ export function secondsArg(value: string | undefined): number | undefined {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) throw new UsageError(`--timeout wants seconds, not "${value}"`);
   return seconds * 1000;
+}
+
+/** A whole number of at least `min`: `--limit`, `--width`, `--scroll`… */
+export function countArg(flag: string, value: string, min = 1): number {
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < min) throw new UsageError(`${flag} wants a number, not "${value}"`);
+  return count;
 }
 
 export async function readStdin(): Promise<string> {

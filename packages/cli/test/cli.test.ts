@@ -1,30 +1,7 @@
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-
 import { describe, expect, it } from 'vitest';
 
-import { FAKE, tempDir } from '../../brainyard/test/helpers.js';
-
-const root = fileURLToPath(new URL('..', import.meta.url));
-
-function cli(args: string[], options: { input?: string; env?: Record<string, string> } = {}) {
-  const done = spawnSync(process.execPath, ['--import', 'tsx', 'src/main.ts', ...args], {
-    cwd: root,
-    input: options.input ?? '',
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      NO_COLOR: '1',
-      BRAINYARD_CLAUDE_BIN: JSON.stringify(FAKE.claude),
-      BRAINYARD_CODEX_BIN: JSON.stringify(FAKE.codex),
-      BRAINYARD_AGY_BIN: JSON.stringify(FAKE.antigravity),
-      BRAINYARD_OPENCODE_BIN: JSON.stringify(FAKE.opencode),
-      ...options.env,
-    },
-    timeout: 30_000,
-  });
-  return { code: done.status, stdout: done.stdout, stderr: done.stderr };
-}
+import { tempDir } from '../../brainyard/test/helpers.js';
+import { cli } from './run-cli.js';
 
 describe('brainyard CLI', () => {
   it('prints the status table', () => {
