@@ -123,6 +123,33 @@ Claude Code background session, `r` continues a saved session, Tab jumps between
 lists the keys and `q` quits; the panes keep running. Russian keyboard letters work by their
 place on the keyboard.
 
+Digits 1–5 (or `[` `]`) open its pages:
+
+- **Wall** — the live screens of several panes side by side, the way a tiling compositor shows
+  windows: a grid, one main tile and a stack, or columns (`l`). Arrows move the focus, `z` zooms
+  the tile, `i` types into it (every key, Ctrl+C included, goes to its CLI until Ctrl+Q), Enter
+  takes it full screen and `n` starts a new tile to type into. Each pane is made the size of its
+  tile. A tile turns yellow while its agent waits for you; the header counts who waits, and the
+  terminal rings when someone starts to.
+- **Sessions** — what runs elsewhere and this folder's sessions; `/` filters; a card with the
+  tokens by model and the command that continues the session in its own CLI.
+- **Usage** — every subscription window as a bar, the folder's tokens and cost by CLI, and the
+  sessions that used the most.
+- **Settings** — the theme (terminal, ocean, ember, forest, contrast, mono), the accent, the wall's
+  layout, the bell and the page to open on, kept in `~/.config/brainyard/app.json`; `"colors"`
+  there takes your own (`"accent": "#ff8700"`, or a number of the 256).
+
+```console
+Brainyard 0.2.0   1 Overview  [2 Wall]  3 Sessions   4 Usage   5 Settings      ⚠ 1 waiting · 2 panes
+╭─ Codex ─────────── waiting: approval · 120 MB ─╮╭─ Claude Code · auth refac… ─ working · 285 MB ─╮
+│Allow command? [y/n]                            ││Editing src/auth.ts…                            │
+│                                                ││                                                │
+╰─ i type · Enter full screen ─── codex-5e6f7a8b ─╯╰─ active ───────────────────── claude-1a2b3c4d ─╯
+ ←→↑↓ focus · i type · Enter full screen · z zoom · l grid · x close · n new · ? help · q quit
+```
+
+The app leaves the mouse to the terminal, so selecting and copying text works anywhere on it.
+
 **Status.** Piped or in a script, `brainyard` prints this table, as `brainyard status` does:
 
 ```console

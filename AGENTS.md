@@ -37,8 +37,9 @@ npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же д
   pane, sessions и stop, usage; `src/args.ts` — флаги, `src/format.ts` и `term.ts` — вывод;
   `src/ui/` — дашборд и HTTP API; `src/tui/` — приложение (`brainyard` без аргументов):
   `state.ts` — состояние и события, `update.ts` и `view.ts` — чистые `update(state, событие)` и
-  `render(state) → строки`, `app.ts` — чтение по расписанию и эффекты, `terminal.ts` — экран
-  терминала. Экран — чистая функция: веб рисует те же кадры. Тесты команды — `test/run-cli.ts`:
+  `render(state) → строки` (обзор, шапка, клавиши), `pages.ts` — стена, сессии, использование,
+  настройки, `wall.ts` — раскладка плиток, `settings.ts` — темы и файл настроек, `app.ts` —
+  чтение по расписанию и эффекты, `terminal.ts` — экран терминала. Экран — чистая функция: веб рисует те же кадры. Тесты команды — `test/run-cli.ts`:
   он всегда задаёт тестовый сокет tmux. API берёт только из `@antondanv/brainyard`, как внешний
   пользователь; чего не хватает — экспортируй из `packages/brainyard/src/index.ts` осознанно.
 - CLI видит исходники API без сборки: `paths` в `tsconfig.json`, alias в `vitest.config.ts`.

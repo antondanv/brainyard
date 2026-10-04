@@ -41,7 +41,12 @@ All notable changes to this project are documented here. The format follows
   goes into a pane and Ctrl+Q comes back; `n` starts a new pane, `x` closes one, `s` stops a
   Claude Code background session, `r` continues a saved session in a pane, `q` quits and the
   panes keep running. The screen is a pure function of the app's state, so a browser can draw
-  the same frames.
+  the same frames. Its pages: the wall — several panes' live screens as tiles (a grid, main and
+  stack, columns, zoom), each pane sized to its tile, with typing into the tile in focus; sessions
+  with a filter and a card; usage with a bar for every subscription window; settings — a theme,
+  an accent, the wall's layout, the bell, the first page, kept in
+  `~/.config/brainyard/app.json` with your own colours. The header counts who waits for you, and
+  the terminal rings when someone starts to.
 - `brainyard serve`: the HTTP API alone, with no browser. Its token can come from
   `$BRAINYARD_TOKEN`, and `--json` prints `{url, port, token}` for the program that starts it.
   The API adds `GET /api/sessions`, `GET /api/sessions/live`, `POST /api/sessions/:id/stop`,
