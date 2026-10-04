@@ -150,18 +150,23 @@ async function findPane(ref: string | undefined): Promise<PaneInfo> {
   return panes.find((pane) => pane.pane === ref) ?? resolvePane(ref, await withSessions(panes));
 }
 
-export async function panesCommand(args: string[]): Promise<number> {
-  const { values, positionals } = parse(args, { json: { type: 'boolean' } });
-  noMore(positionals);
-  needTmux();
+/** The live panes, newest first, with their sessions and the memory their CLIs use. */
+export async function readPanes(): Promise<PaneRow[]> {
   const panes = await withSessions(await listPanes());
   const memory = await paneMemory(panes);
-  const rows: PaneRow[] = panes
+  return panes
     .map((pane) => {
       const used = memory.get(pane.pane);
       return used === undefined ? pane : { ...pane, memory: used };
     })
     .sort((a, b) => (Date.parse(b.startedAt ?? '') || 0) - (Date.parse(a.startedAt ?? '') || 0));
+}
+
+export async function panesCommand(args: string[]): Promise<number> {
+  const { values, positionals } = parse(args, { json: { type: 'boolean' } });
+  noMore(positionals);
+  needTmux();
+  const rows = await readPanes();
   if (values.json) {
     process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`);
     return 0;

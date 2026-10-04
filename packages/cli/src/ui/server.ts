@@ -26,14 +26,26 @@ import {
   type BrainId,
   BrainyardError,
   brainId,
+  capturePane,
   clip,
+  closePane,
+  listPanes,
+  liveSessions,
+  type ModelPrice,
   models,
   type RunResult,
+  resizePane,
+  sessions,
   start,
+  startPane,
   status,
+  stopSession,
   tidyPaths,
+  type UsageOptions,
+  usage,
 } from '@antondanv/brainyard';
 
+import { readPanes, typeInto } from '../panes.js';
 import { VERSION } from '../version.js';
 import { FAVICON, page } from './page.js';
 
@@ -46,7 +58,10 @@ export interface ServeOptions {
 }
 
 export interface Dashboard {
+  /** The dashboard, with the token in the fragment. */
   url: string;
+  /** Where the API answers: `http://127.0.0.1:4747`. */
+  origin: string;
   port: number;
   host: string;
   token: string;
@@ -165,6 +180,134 @@ export async function serve(options: ServeOptions = {}): Promise<Dashboard> {
     }
     if (parts[0] === 'runs') {
       await runsApi(req, res, method, parts.slice(1));
+      return;
+    }
+    if (parts[0] === 'sessions') {
+      await sessionsApi(req, res, method, parts.slice(1), url.searchParams);
+      return;
+    }
+    if (method === 'POST' && parts[0] === 'usage' && parts.length === 1) {
+      send(res, 200, await usage(usageOptions(await readJson(req))));
+      return;
+    }
+    if (parts[0] === 'panes') {
+      await panesApi(req, res, method, parts.slice(1), url.searchParams);
+      return;
+    }
+    send(res, 404, { error: { kind: 'invalid_option', message: 'no such endpoint' } });
+  }
+
+  async function sessionsApi(
+    req: IncomingMessage,
+    res: ServerResponse,
+    method: string,
+    rest: string[],
+    query: URLSearchParams,
+  ): Promise<void> {
+    const cwd = query.get('cwd') || undefined;
+    const brains = query.getAll('brain').map((name) => brainId(name));
+    if (method === 'GET' && rest.length === 0) {
+      const limit = count(query.get('limit'), 'limit');
+      const list = await sessions({
+        ...(cwd ? { cwd } : {}),
+        ...(brains.length > 0 ? { brains } : {}),
+        headless: query.get('headless') === '1',
+        ...(limit ? { limit } : {}),
+      });
+      send(res, 200, list);
+      return;
+    }
+    if (method === 'GET' && rest.length === 1 && rest[0] === 'live') {
+      const list = await liveSessions({
+        ...(cwd ? { cwd } : {}),
+        ...(brains.length > 0 ? { brains } : {}),
+        all: query.get('all') === '1',
+        // Codex shows some approval dialogs only on screen: look at Brainyard's panes too.
+        panes: {},
+      });
+      send(res, 200, list);
+      return;
+    }
+    if (method === 'POST' && rest.length === 2 && rest[1] === 'stop') {
+      const sessionId = rest[0] ?? '';
+      if (!/^[\w-]+$/.test(sessionId)) throw new BrainyardError('invalid_option', 'not a session id');
+      const body = await readJson(req);
+      let folder = text(body.cwd);
+      if (!folder) {
+        // The caller named the session: it is stopped in the folder it belongs to.
+        folder = (await liveSessions({ brains: ['claude'] })).find((session) => session.id === sessionId)?.cwd;
+        if (!folder) {
+          send(res, 200, { result: 'not-running' });
+          return;
+        }
+      }
+      const result = await stopSession({ brain: text(body.brain) ?? 'claude', sessionId, cwd: folder });
+      send(res, 200, { result });
+      return;
+    }
+    send(res, 404, { error: { kind: 'invalid_option', message: 'no such endpoint' } });
+  }
+
+  async function panesApi(
+    req: IncomingMessage,
+    res: ServerResponse,
+    method: string,
+    rest: string[],
+    query: URLSearchParams,
+  ): Promise<void> {
+    if (rest.length === 0 && method === 'GET') {
+      send(res, 200, await readPanes());
+      return;
+    }
+    if (rest.length === 0 && method === 'POST') {
+      const body = await readJson(req);
+      const cwd = text(body.cwd);
+      if (!cwd) throw new BrainyardError('invalid_option', 'cwd is required: the folder the CLI works in');
+      const width = count(body.width, 'width');
+      const height = count(body.height, 'height');
+      const worktree = body.worktree === true ? true : text(body.worktree);
+      const started = await startPane({
+        brain: brainId(String(body.brain ?? '')),
+        cwd,
+        ...strings(body, ['prompt', 'resume', 'name', 'label', 'system', 'model', 'effort']),
+        ...(text(body.mode) ? { permissionMode: text(body.mode) } : {}),
+        ...(worktree ? { worktree } : {}),
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+      });
+      send(res, 201, started);
+      return;
+    }
+    // Exact names only: tmux would take a prefix and act on another pane.
+    const pane = rest[0] ?? '';
+    if (!/^[\w.-]+$/.test(pane)) throw new BrainyardError('invalid_option', 'not a pane name');
+    const gone = () => send(res, 404, { error: { kind: 'invalid_option', message: `no such pane: ${pane}` } });
+    if (rest.length === 2 && rest[1] === 'screen' && method === 'GET') {
+      const scroll = count(query.get('scroll'), 'scroll', 0);
+      const screen = await capturePane(pane, scroll ? { scroll } : {});
+      if (screen) send(res, 200, screen);
+      else gone();
+      return;
+    }
+    if (rest.length === 2 && method === 'POST' && ['send', 'resize', 'close'].includes(rest[1] ?? '')) {
+      const body = await readJson(req);
+      if (!(await listPanes()).some((info) => info.pane === pane)) {
+        gone();
+        return;
+      }
+      if (rest[1] === 'send') {
+        const data = typeof body.data === 'string' ? body.data : '';
+        if (!data && body.enter !== true)
+          throw new BrainyardError('invalid_option', 'nothing to send: give data, enter or both');
+        await typeInto(pane, data, { enter: body.enter === true });
+        send(res, 200, { sent: true });
+      } else if (rest[1] === 'resize') {
+        const width = count(body.width, 'width');
+        const height = count(body.height, 'height');
+        if (!width || !height) throw new BrainyardError('invalid_option', 'resize wants width and height');
+        send(res, 200, { resized: await resizePane(pane, width, height) });
+      } else if (await closePane(pane)) send(res, 200, { closed: true });
+      else gone();
       return;
     }
     send(res, 404, { error: { kind: 'invalid_option', message: 'no such endpoint' } });
@@ -317,8 +460,10 @@ export async function serve(options: ServeOptions = {}): Promise<Dashboard> {
   }
 
   const shownHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host.includes(':') ? `[${host}]` : host;
+  const origin = `http://${shownHost}:${port}`;
   return {
-    url: `http://${shownHost}:${port}/#token=${token}`,
+    url: `${origin}/#token=${token}`,
+    origin,
     port,
     host,
     token,
@@ -364,6 +509,62 @@ function describe(tracked: Tracked) {
 function withoutEvents(result: RunResult): Omit<RunResult, 'events'> {
   const { events: _events, ...rest } = result;
   return rest;
+}
+
+/** A non-empty string from a request, or undefined. */
+function text(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+/** The non-empty strings among these fields of a request body. */
+function strings<K extends string>(body: Record<string, unknown>, keys: readonly K[]): Partial<Record<K, string>> {
+  const out: Partial<Record<K, string>> = {};
+  for (const key of keys) {
+    const value = text(body[key]);
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
+/** A whole number from a query or a body; absent is undefined. */
+function count(value: unknown, name: string, min = 1): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min) {
+    throw new BrainyardError('invalid_option', `${name} wants a whole number, not ${JSON.stringify(value)}`);
+  }
+  return number;
+}
+
+function usageOptions(body: Record<string, unknown>): UsageOptions {
+  if (body.brains !== undefined && !Array.isArray(body.brains)) {
+    throw new BrainyardError('invalid_option', 'brains wants a list of brain names');
+  }
+  const brains = Array.isArray(body.brains) ? body.brains.map((name) => brainId(String(name))) : undefined;
+  const limit = count(body.limit, 'limit', 0);
+  const timeoutMs = count(body.timeoutMs, 'timeoutMs');
+  const prices = body.prices;
+  if (prices !== undefined) {
+    const valid =
+      prices !== null &&
+      typeof prices === 'object' &&
+      !Array.isArray(prices) &&
+      Object.values(prices).every((price) => {
+        const { input, output } = (price ?? {}) as Record<string, unknown>;
+        return typeof input === 'number' && typeof output === 'number';
+      });
+    if (!valid) throw new BrainyardError('invalid_option', 'prices wants {"model": {"input": 3, "output": 15}}');
+  }
+  return {
+    ...strings(body, ['cwd', 'sessionId']),
+    ...(brains ? { brains } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+    ...(body.headless === true ? { headless: true } : {}),
+    ...(body.offline === true ? { offline: true } : {}),
+    ...(body.live === true ? { live: true } : {}),
+    ...(prices ? { prices: prices as Record<string, ModelPrice> } : {}),
+    ...(timeoutMs ? { timeoutMs } : {}),
+  };
 }
 
 function hostAllowed(header: string | undefined, port: number, host: string): boolean {

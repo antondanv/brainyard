@@ -1,14 +1,19 @@
 # Local HTTP API
 
-`brainyard ui` serves the dashboard and the API it uses. Any language can call the API to get
-the same status checks, one-shot answers and streamed agent runs.
+`brainyard serve` runs the API alone, for scripts in any language: status checks, one-shot
+answers, streamed agent runs, saved and running sessions, usage and subscription limits, and
+CLI sessions in tmux panes. `brainyard ui` serves the same API with the dashboard and opens it
+in a browser.
 
 ```sh
-brainyard ui --no-open --port 4747 --token "$BRAINYARD_TOKEN"
+BRAINYARD_TOKEN=secret-for-scripts brainyard serve --json
+{"url":"http://127.0.0.1:4747","port":4747,"token":"secret-for-scripts"}
 ```
 
-Without `--token`, a random token is generated each start and printed as part of the URL
-(`http://127.0.0.1:4747/#token=…`).
+The token comes from `--token`, then `$BRAINYARD_TOKEN` (`serve` only), else a random one per
+start, printed to stderr. `--json` prints one line on stdout, which a program that started the
+server reads to know where to call. Without `--port` the server takes 4747 or the next free
+port; `--port 0` picks any. `SIGINT` and `SIGTERM` stop it; tmux panes keep running.
 
 ## Access rules
 
@@ -39,9 +44,38 @@ This API starts agents on your machine, so it is guarded like it:
 | GET | `/api/runs/:id/events` | | Server-sent events, replayed from the start |
 | POST | `/api/runs/:id/hint` | `{text}` | `{delivered: boolean}` |
 | POST | `/api/runs/:id/stop` | `{}` | `{stopping: true}` |
+| GET | `/api/sessions?cwd=&brain=&headless=1&limit=` | | Saved sessions of a folder, newest first, running ones with `live` |
+| GET | `/api/sessions/live?cwd=&brain=&all=1` | | Sessions running now on the machine, or in `cwd`; `all=1` adds finished background ones |
+| POST | `/api/sessions/:id/stop` | `{cwd?}` | `{result: "stopped" \| "not-running"}` for a Claude Code background session |
+| POST | `/api/usage` | `{cwd?, brains?, sessionId?, limit?, headless?, offline?, live?, prices?, timeoutMs?}` | Subscription limits and the tokens and cost of saved sessions |
+| GET | `/api/panes` | | Live panes, newest first, with `memory` in bytes |
+| POST | `/api/panes` | `{brain, cwd, prompt?, resume?, name?, label?, system?, model?, effort?, mode?, worktree?, width?, height?}` | `201` and the pane: `{pane, brain, sessionId?, warnings, …}` |
+| GET | `/api/panes/:pane/screen?scroll=` | | The screen: `{lines, width, height, cursor, …}`, lines with ANSI colours |
+| POST | `/api/panes/:pane/send` | `{data?, enter?}` | `{sent: true}` |
+| POST | `/api/panes/:pane/resize` | `{width, height}` | `{resized: boolean}` |
+| POST | `/api/panes/:pane/close` | `{}` | `{closed: true}`; the conversation stays resumable |
 
 Runs started over the API default to `access: "workspace"`, and to a fresh temporary folder
 when `cwd` is not given. The folder is kept afterwards so you can look at what the agent made.
+
+### Sessions, usage and panes
+
+These endpoints are the library's `sessions()`, `liveSessions()`, `stopSession()`, `usage()`
+and pane functions; the README describes their fields.
+
+- `cwd` defaults to the server's folder for sessions and usage. A pane needs it: it is where
+  the CLI works.
+- `brain` in a query repeats: `?brain=claude&brain=codex`. Without it, every CLI.
+- `stop` without `cwd` stops the session in its own folder; a session that is not running
+  answers `not-running`. Only Claude Code has background sessions.
+- `usage` makes no model call unless `live: true` (one tiny Claude Code call, which may cost);
+  `offline: true` reads saved stores only. `prices` is
+  `{"model": {"input": 3, "output": 15}}` in dollars per million tokens.
+- A pane is named exactly, as `/api/panes` lists it: tmux itself would take the start of a
+  name and act on another pane. `send` types `data` as is (keys, escape sequences, text in any
+  language); `enter: true` then presses Enter on its own after a short pause, so a CLI that
+  reads a fast burst as a paste still sends the message. Attaching takes a terminal, so it is
+  `brainyard pane attach`, not an endpoint.
 
 ### The event stream
 
@@ -73,7 +107,7 @@ Every error is JSON: `{"error": {"kind": "...", "message": "...", "fix": "...", 
 | 400 | Invalid options (`kind: invalid_option`) |
 | 401 | Missing or wrong token |
 | 403 | Cross-origin write |
-| 404 | Unknown endpoint or run |
+| 404 | Unknown endpoint, run or pane |
 | 415 | A write that is not JSON |
 | 421 | Unexpected `Host` header |
 | 424 | The CLI is not installed (`fix` says how to install it) |
@@ -82,14 +116,22 @@ Every error is JSON: `{"error": {"kind": "...", "message": "...", "fix": "...", 
 ## Examples
 
 ```sh
-TOKEN=secret-for-scripts
-brainyard ui --no-open --token "$TOKEN" &
+export BRAINYARD_TOKEN=secret-for-scripts
+brainyard serve &
+AUTH="Authorization: Bearer $BRAINYARD_TOKEN"; JSON='Content-Type: application/json'
 
-curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:4747/api/status | jq '.ready'
+curl -s -H "$AUTH" http://127.0.0.1:4747/api/status | jq '.ready'
 
-curl -s -X POST http://127.0.0.1:4747/api/ask \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+curl -s -X POST http://127.0.0.1:4747/api/ask -H "$AUTH" -H "$JSON" \
   -d '{"brain":"codex","prompt":"Name three HTTP methods","effort":"low"}' | jq -r .text
+
+# A Claude Code session in a pane: start it, read its screen, type into it, end it.
+PANE=$(curl -s -X POST http://127.0.0.1:4747/api/panes -H "$AUTH" -H "$JSON" \
+  -d "{\"brain\":\"claude\",\"cwd\":\"$PWD\",\"prompt\":\"Plan the release\"}" | jq -r .pane)
+curl -s -H "$AUTH" "http://127.0.0.1:4747/api/panes/$PANE/screen" | jq -r '.lines[]'
+curl -s -X POST "http://127.0.0.1:4747/api/panes/$PANE/send" -H "$AUTH" -H "$JSON" \
+  -d '{"data":"Now write it down","enter":true}'
+curl -s -X POST "http://127.0.0.1:4747/api/panes/$PANE/close" -H "$AUTH" -H "$JSON" -d '{}'
 ```
 
 Python, standard library only:
