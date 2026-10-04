@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A stand-in for `agy` in print mode with stream-json input: every stdin line
 // is a turn with its own result, usage is cumulative, and it waits for EOF.
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { lines, recorder } from './fake-common.mjs';
 
@@ -11,7 +11,7 @@ const record = recorder(args);
 const out = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 
 if (args[0] === '--version') {
-  console.log('1.2.999');
+  console.log(process.env.FAKE_AGY_VERSION ?? '1.2.999');
   process.exit(0);
 }
 if (args[0] === 'models') {
@@ -27,6 +27,18 @@ if (args[0] === 'models') {
 }
 if (args[0] === '--help') {
   console.log('Usage of agy:\n  --print-timeout  --sandbox  --mode  --conversation  --add-dir  --prompt-interactive');
+  process.exit(0);
+}
+if (args.includes('/usage')) {
+  if (scenario === 'quota-delay') await new Promise((resolve) => setTimeout(resolve, 30000));
+  if (scenario === 'quota-auth') {
+    out({ status: 'ERROR', command: { name: 'usage' }, error: 'not signed in' });
+    process.exit(1);
+  }
+  process.stdout.write(
+    process.env.FAKE_QUOTA_REPORT ?? readFileSync(new URL('./agy-quota.json', import.meta.url), 'utf8'),
+  );
+  process.stdout.write('\n');
   process.exit(0);
 }
 // Without print mode the real CLI is interactive. The fake writes the line

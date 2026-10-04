@@ -276,11 +276,23 @@ an hour. When a CLI does not answer, a built-in list is used and marked `source:
   store does: `gen_metadata.data` is protobuf `CortexStepGeneratorMetadata`, with
   `chat_model.usage` and `response_model`. Brainyard reads the counters and skips
   unrelated fields or unreadable generations. Legacy conversations can have no such store.
-  Subscription quotas are exposed through the [interactive `/usage` panel](https://antigravity.google/docs/cli/commands/usage/).
+  Subscription quotas come from `agy -p /usage --output-format json`, a zero-turn
+  command report. [CLI 1.1.11 introduced non-interactive usage reports](https://antigravity.google/docs/changelog).
+  Brainyard checks the version before sending `/usage`: older print mode may treat it
+  as a model prompt. Enabled buckets supply remaining fractions, model groups and
+  reset times; disabled or unmeasured buckets stay unknown, and weekly-only accounts
+  do not acquire invented five-hour windows. The check uses the active CLI login,
+  not the conversation store override.
 - OpenCode records tokens in assistant messages and step-finish parts. They describe
   the same work: count messages, not both. Input already excludes cache; reasoning is
   separate from output, so Brainyard adds it to output. A catalog with no prices records
   zero dollars even for a paid provider; Brainyard requires `prices` to estimate that cost.
+- OpenCode Go quotas are not in the session database. Its [usage route](https://github.com/anomalyco/opencode/blob/dev/packages/console/app/src/routes/zen/go/v1/usage.ts)
+  accepts the OpenCode API key and returns `usage.rolling`, `weekly` and `monthly`
+  with `percent` and ISO `resetsAt`. No key, unauthorized key and no Go subscription
+  are distinct outcomes. Brainyard never forwards third-party provider keys or OAuth
+  tokens. The response does not supply durations, so Brainyard leaves `windowMinutes`
+  absent. `offline: true` skips both Antigravity and Go quota requests.
 
 ## Permissions and sandboxes
 

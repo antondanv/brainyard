@@ -133,8 +133,11 @@ export interface LimitWindow {
   /** Unix seconds. */
   resetsAt?: number;
   windowMinutes?: number;
-  /** Codex can report separate buckets for different models. */
+  /** Distinct quota buckets or model pools. */
   limitId?: string;
+  label?: string;
+  /** Antigravity model group sharing this quota. */
+  group?: string;
 }
 
 export interface RunResult {

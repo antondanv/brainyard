@@ -1,4 +1,4 @@
-/** Subscription snapshots and usage of saved conversations; live checks are explicitly requested. */
+/** Saved session usage and subscription metadata, with opt-in Claude inference. */
 import { statSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -23,6 +23,7 @@ import {
   type SessionInfo,
   sessions,
 } from './sessions.js';
+import { agyLimits, opencodeLimits } from './subscription-limits.js';
 import type { BrainId, LimitWindow, ModelPrice, RunError, Usage } from './types.js';
 import { BRAIN_IDS, emptyUsage } from './types.js';
 import {
@@ -47,13 +48,17 @@ export interface UsageOptions {
   headless?: boolean;
   /** Maximum sessions per CLI, newest first. Defaults to 200; 0 reads only limits. */
   limit?: number;
+  /** Saved stores; Antigravity quotas use the active CLI login instead. */
   homes?: Partial<Record<BrainId, string>>;
   /** Estimate dollars per model, using the same prices as run()/ask(). */
   prices?: Record<string, ModelPrice>;
   /** One minimal Claude call to read rate_limit_event. Defaults to false; can incur a charge. */
   live?: boolean;
+  /** Read stores only; skip Antigravity and OpenCode Go quota requests. Defaults to false. */
+  offline?: boolean;
   commands?: Partial<Record<BrainId, string | string[]>>;
   env?: NodeJS.ProcessEnv;
+  /** Timeout for quota checks in milliseconds, from 1 to 2^31-1. */
   timeoutMs?: number;
   signal?: AbortSignal;
 }
@@ -81,7 +86,7 @@ export interface BrainUsage {
   brain: BrainId;
   /** Null means unavailable, not 0% used. */
   limits: LimitWindow[] | null;
-  limitsSource: 'rollout' | 'live' | null;
+  limitsSource: 'rollout' | 'live' | 'cli' | 'api' | null;
   /** ISO snapshot observation time; Codex uses the persisted event timestamp. */
   limitsObservedAt: string | null;
   limitsUnavailable: 'not_requested' | 'missing' | 'unsupported' | 'failed' | null;
@@ -102,6 +107,13 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
   const limit = options.limit ?? 200;
   if (!Number.isInteger(limit) || limit < 0)
     throw new BrainyardError('invalid_option', 'usage limit must be a nonnegative integer');
+  if (options.offline && options.live)
+    throw new BrainyardError('invalid_option', 'offline and live cannot both be enabled');
+  if (
+    options.timeoutMs !== undefined &&
+    (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0 || options.timeoutMs > 2_147_483_647)
+  )
+    throw new BrainyardError('invalid_option', 'usage timeoutMs must be an integer from 1 to 2147483647');
   const cwd = resolve(options.cwd ?? process.cwd());
   const places = pathVariants(cwd);
   const env = { ...process.env, ...options.env };
@@ -120,11 +132,9 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
     const selected = list.filter((session) => !options.sessionId || session.id === options.sessionId);
     if (brain === 'opencode') {
       report.brains.push(
-        unavailable(
-          brain,
-          'unsupported',
-          'OpenCode does not persist subscription windows; limits depend on the provider.',
-        ),
+        options.offline
+          ? unavailable(brain, 'not_requested', 'OpenCode Go quota requests are disabled by offline: true.')
+          : await opencodeLimits(home, env, { ...options, cwd }),
       );
       report.sessions.push(...(await opencodeSessions(home, selected, options.prices)));
     } else if (brain === 'claude') {
@@ -168,11 +178,9 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
       );
     } else {
       report.brains.push(
-        unavailable(
-          brain,
-          'unsupported',
-          'Antigravity exposes model quotas through the /usage TUI; no machine-readable quota snapshot was found in its stores.',
-        ),
+        options.offline
+          ? unavailable(brain, 'not_requested', 'Antigravity /usage quota requests are disabled by offline: true.')
+          : await agyLimits(env, options),
       );
       for (const session of selected) {
         const safe = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(session.id);

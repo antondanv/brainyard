@@ -227,6 +227,8 @@ for (const brain of report.brains) {
 }
 
 const one = await usage({ cwd: './app', brains: ['codex'], sessionId, prices });
+const subscriptions = await usage({ brains: ['antigravity', 'opencode'], limit: 0 });
+const saved = await usage({ cwd: './app', offline: true, prices }); // только хранилища
 const limits = await usage({ brains: ['claude'], live: true, limit: 0 });
 ```
 
@@ -241,19 +243,33 @@ Code, Codex, Antigravity и OpenCode. Как `sessions()`, исключает he
 |---|---|---|
 | Claude Code | Весь транскрипт, каждое сообщение считается один раз по id; оценка по `prices` | `rate_limit_event` при `live: true` |
 | Codex | Последний накопительный итог rollout; стоимость по модели каждого хода | Самые свежие снимки из всего хранилища аккаунта |
-| Antigravity | Метаданные генераций в `conversations/<id>.db`; оценка по `prices` | Через этот API недоступны; у CLI есть `/usage` в TUI |
-| OpenCode | Сообщения ассистента в `opencode.db` или сохранённые итоги сессии; положительная стоимость от CLI или оценка по `prices` | Зависят от провайдера; сохранённого снимка подписки нет |
+| Antigravity | Метаданные генераций в `conversations/<id>.db`; оценка по `prices` | `agy -p /usage --output-format json`: недельные и пятичасовые квоты по группам моделей |
+| OpenCode | Сообщения ассистента в `opencode.db` или сохранённые итоги сессии; положительная стоимость от CLI или оценка по `prices` | API OpenCode Go: окна подписки rolling, weekly и monthly |
 
 У окон есть доля `utilization` (`0.95` — 95%), необязательная длительность
-`windowMinutes`, время сброса `resetsAt` в Unix-секундах и `limitId` Codex для
-отдельных лимитов моделей. Рядом — источник и время наблюдения: старый снимок
+`windowMinutes`, время сброса `resetsAt` в Unix-секундах и `limitId` для отдельных
+квот. У Antigravity также есть `group` и `label`. Рядом — источник (`rollout`, `live`,
+`cli` или `api`) и время наблюдения: старый снимок
 не подтверждает текущее состояние. Лимиты относятся к аккаунту и не зависят от
 выбранной папки или сессии.
+
+По умолчанию Antigravity и OpenCode Go получают данные подписки без обращения к
+модели. Antigravity нужен авторизованный CLI версии 1.1.11 или новее; `/usage`
+запускается в отдельной пустой временной папке. `homes.antigravity` выбирает сохранённые
+разговоры; лимиты относятся к текущему входу CLI. OpenCode Go использует
+`OPENCODE_GO_API_KEY` или `OPENCODE_API_KEY`, затем API-ключи `opencode-go`/`opencode`
+из `auth.json` (либо `OPENCODE_AUTH_CONTENT`). `options.apiKey` провайдера в глобальном,
+явно заданном, проектном или встроенном конфиге OpenCode может переопределить ключ
+из хранилища; поддерживается `{env:NAME}`. Если ключа или подписки Go нет, возвращается
+причина. `offline: true` отключает оба запроса и читает только хранилища; его нельзя
+совместить с `live: true`.
 
 `live: true` делает один минимальный изолированный вызов Claude, по умолчанию с
 таймаутом 30 секунд; вызов может стоить денег. Сохранённые разговоры не продолжает.
 Даже при отказе возвращает полученные окна вместе с `error`. Вызов настраивается
-через `commands`, `env`, `timeoutMs` и `signal`. Без `live` обращений к модели нет.
+через `commands`, `env`, `timeoutMs` и `signal`; последние три опции действуют и на
+запрос Go. Таймаут по умолчанию — 30 секунд для Claude и Antigravity, 10 секунд для
+Go. Без `live` обращений к модели нет.
 
 Если данных нет, `usage` или `limits` равны `null`, а причину объясняют
 `unavailableReason` или `limitsUnavailable`/`detail`. Старые разговоры Antigravity
@@ -325,7 +341,7 @@ Code, Codex, Antigravity и OpenCode. Как `sessions()`, исключает he
 | Список моделей | алиасы | ✓ | ✓ | ✓ |
 | Веб можно выключить | ✓ | ✓ | — (предупреждение) | ✓ |
 | Шелл можно выключить | ✓ | вместо этого песочница | — (предупреждение) | ✓ |
-| Загрузка окон подписки | ✓ | — | — | — |
+| Окна подписки (`usage`) | живой вызов | снимки rollout | команда `/usage` | API Go |
 
 Опция, которую CLI выполнить не может, никогда не пропадает молча: она возвращается событием
 `warning` и в `result.warnings`.

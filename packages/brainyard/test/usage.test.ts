@@ -26,6 +26,7 @@ describe('saved usage', () => {
     const report = await usage({
       cwd: folder(),
       homes: { claude: home, codex: home, antigravity: home, opencode: home },
+      offline: true,
     });
     expect(report.brains.map((brain) => brain.brain)).toEqual(['claude', 'codex', 'antigravity', 'opencode']);
     expect(report.brains.every((brain) => brain.limits === null)).toBe(true);
@@ -204,7 +205,7 @@ describe('saved usage', () => {
     const cwd = folder(),
       home = tempDir();
     agyStore(home, cwd, 'agy-1', [agyGeneration('a'), Buffer.from([10, 100, 1]), agyGeneration('b')]);
-    const report = await usage({ cwd, brains: ['agy'], homes: { antigravity: home }, prices });
+    const report = await usage({ cwd, brains: ['agy'], homes: { antigravity: home }, prices, offline: true });
     expect(report.sessions[0]).toMatchObject({
       id: 'agy-1',
       source: 'conversation_db',
@@ -219,7 +220,7 @@ describe('saved usage', () => {
     const cwd = folder(),
       home = tempDir();
     agyStore(home, cwd, 'old', []);
-    const report = await usage({ cwd, brains: ['antigravity'], homes: { antigravity: home } });
+    const report = await usage({ cwd, brains: ['antigravity'], homes: { antigravity: home }, offline: true });
     expect(report.sessions[0]).toMatchObject({ usage: null, costUsd: null });
     expect(report.sessions[0]?.unavailableReason).toContain('generator metadata');
   });

@@ -292,6 +292,7 @@ export interface Captured {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  cancelled?: boolean;
   /** Spawn failed (not found, not executable). */
   error?: Error;
 }
@@ -300,8 +301,10 @@ export interface Captured {
 export function capture(
   command: Command,
   args: readonly string[],
-  options: { timeoutMs?: number; cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  options: { timeoutMs?: number; cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {},
 ): Promise<Captured> {
+  if (options.signal?.aborted)
+    return Promise.resolve({ code: null, stdout: '', stderr: '', timedOut: false, cancelled: true });
   return new Promise((done) => {
     let child: ChildProcess;
     try {
@@ -317,13 +320,16 @@ export function capture(
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let cancelled = false;
     let failure: Error | undefined;
     let settled = false;
     const finish = (code: number | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener('abort', cancel);
       const result: Captured = { code, stdout, stderr, timedOut };
+      if (cancelled) result.cancelled = true;
       if (failure) result.error = failure;
       done(result);
     };
@@ -337,6 +343,11 @@ export function capture(
       timedOut = true;
       killTree(child, 'SIGKILL');
     }, options.timeoutMs ?? 15_000);
+    const cancel = () => {
+      cancelled = true;
+      killTree(child, 'SIGKILL');
+    };
+    options.signal?.addEventListener('abort', cancel, { once: true });
     child.once('error', (error) => {
       failure = error;
       // A process that never started emits no 'close' we can rely on.

@@ -223,6 +223,8 @@ for (const brain of report.brains) {
 }
 
 const one = await usage({ cwd: './app', brains: ['codex'], sessionId, prices });
+const subscriptions = await usage({ brains: ['antigravity', 'opencode'], limit: 0 });
+const saved = await usage({ cwd: './app', offline: true, prices }); // stores only
 const limits = await usage({ brains: ['claude'], live: true, limit: 0 });
 ```
 
@@ -236,18 +238,32 @@ account limits. OpenCode's store is `$XDG_DATA_HOME/opencode` or `~/.local/share
 |---|---|---|
 | Claude Code | Whole transcript, counted once per message id; estimate from `prices` | `rate_limit_event` with `live: true` |
 | Codex | Last cumulative rollout total; cost by each turn's model | Freshest rollout snapshots across the account's store |
-| Antigravity | Generation metadata in `conversations/<id>.db`; estimate from `prices` | Unavailable through this API; the CLI exposes `/usage` in its TUI |
-| OpenCode | Assistant messages in `opencode.db`, or retained session totals; reported positive cost or estimate from `prices` | Provider-specific; no persisted subscription snapshot |
+| Antigravity | Generation metadata in `conversations/<id>.db`; estimate from `prices` | `agy -p /usage --output-format json`: weekly and five-hour quotas by model group |
+| OpenCode | Assistant messages in `opencode.db`, or retained session totals; reported positive cost or estimate from `prices` | OpenCode Go API: rolling, weekly and monthly subscription windows |
 
 Limits use fractional `utilization` (`0.95` means 95%), optional `windowMinutes`,
-Unix-second `resetsAt`, and Codex `limitId` for separate model buckets. Their source
-and observation time accompany the snapshot; an old snapshot is not a live check.
+Unix-second `resetsAt`, and `limitId` for separate quota buckets. Antigravity also
+provides `group` and `label`. Their source (`rollout`, `live`, `cli` or `api`) and
+observation time accompany the snapshot; an old snapshot is not a live check.
 Limits apply to the account and are independent of the requested folder or session.
+
+By default, Antigravity and OpenCode Go fetch subscription metadata without a model
+turn. Antigravity needs a signed-in CLI version 1.1.11 or later and runs `/usage` in
+a private empty directory. `homes.antigravity` selects saved conversations; quotas
+belong to the active CLI login. OpenCode Go uses `OPENCODE_GO_API_KEY` or
+`OPENCODE_API_KEY`, then API keys for `opencode-go`/`opencode` in its `auth.json`
+(or `OPENCODE_AUTH_CONTENT`). Provider `options.apiKey` from global, explicit,
+project or inline OpenCode config can override the stored key; `{env:NAME}` is
+supported. A missing key or Go subscription returns an explanation. `offline: true`
+skips both metadata requests and reads saved stores only; it cannot be combined with
+`live: true`.
 
 `live: true` makes one isolated, minimal Claude call with a 30-second timeout by
 default and can incur a charge. It keeps stored conversations intact. An unsuccessful
 call can still return windows alongside `error`. `commands`, `env`, `timeoutMs` and
-`signal` control that call. Without `live`, no inference call is made.
+`signal` control CLI quota checks; `env`, `timeoutMs` and `signal` also control the Go
+request. Default timeouts are 30 seconds for Claude and Antigravity, 10 seconds for
+Go. Without `live`, no inference call is made.
 
 `usage` and `limits` are `null` when unavailable, with `unavailableReason` or
 `limitsUnavailable`/`detail` explaining why. Older Antigravity conversations without
@@ -318,7 +334,7 @@ not news (a reasoning block, a successful tool result).
 | Lists its models | aliases | ✓ | ✓ | ✓ |
 | Web can be switched off | ✓ | ✓ | — (warns) | ✓ |
 | Shell can be switched off | ✓ | sandboxed instead | — (warns) | ✓ |
-| Subscription window usage | ✓ | — | — | — |
+| Subscription windows (`usage`) | live call | rollout snapshots | `/usage` command | Go API |
 
 An option a CLI cannot honour is never dropped silently: it comes back as a `warning` event and
 in `result.warnings`.

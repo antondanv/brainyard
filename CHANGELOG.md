@@ -24,6 +24,11 @@ All notable changes to this project are documented here. The format follows
 - Codex subscription windows from rollout snapshots, with duration, reset time and
   separate limit buckets; opt-in live Claude subscription windows, including rejected
   calls. Unavailable data carries a reason and is never presented as zero usage.
+- Antigravity grouped subscription quotas through its structured `/usage` command
+  (CLI 1.1.11+), and OpenCode Go rolling, weekly and monthly quotas through its usage
+  API. Both are metadata requests without inference, with timeouts and cancellation.
+  `usage({ offline: true })` reads saved stores only. `LimitWindow` includes optional
+  `group` and `label` for Antigravity's model pools.
 
 ### Changed
 

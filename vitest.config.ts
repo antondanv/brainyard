@@ -16,6 +16,14 @@ export default defineConfig({
     // vi.stubEnv() changes are undone after every test.
     unstubEnvs: true,
     // Never the config or the sessions of this machine's OpenCode: tests name their own.
-    env: { XDG_CONFIG_HOME: '/nonexistent/brainyard-tests', XDG_DATA_HOME: '/nonexistent/brainyard-tests' },
+    env: {
+      XDG_CONFIG_HOME: '/nonexistent/brainyard-tests',
+      XDG_DATA_HOME: '/nonexistent/brainyard-tests',
+      OPENCODE_API_KEY: '',
+      OPENCODE_GO_API_KEY: '',
+      OPENCODE_AUTH_CONTENT: '',
+      OPENCODE_CONFIG_CONTENT: '',
+      OPENCODE_CONFIG: '',
+    },
   },
 });
