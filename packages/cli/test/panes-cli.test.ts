@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { capturePane, listPanes, panesAvailable } from '@antondanv/brainyard';
 import { afterAll, describe, expect, it } from 'vitest';
 
+import { claudeMessage, claudeStore } from '../../brainyard/test/fixtures/usage-store.js';
 import { FAKE, tempDir } from '../../brainyard/test/helpers.js';
 import { cli, root, TEST_SOCKET } from './run-cli.js';
 
@@ -112,7 +113,10 @@ describe.skipIf(!panesAvailable())('brainyard panes and pane … (real tmux)', (
     expect(listed).toMatch(new RegExp(`${pane}\\s+Claude Code\\s+${row.sessionId.slice(0, 8)}\\s+\\d+(\\.\\d)? MB`));
     expect(listed).toContain('Узел; тест');
 
-    const closed = cli(['pane', 'close', pane], { env });
+    // Something was said in it: Claude Code keeps the conversation, and the pane comes back with it.
+    const claude = tempDir('brainyard-claude-home-');
+    claudeStore(claude, cwd, row.sessionId, [claudeMessage('msg_1', 'claude-test')]);
+    const closed = cli(['pane', 'close', pane], { env: { ...env, CLAUDE_CONFIG_DIR: claude } });
     expect(closed.code, closed.stderr).toBe(0);
     expect(closed.stderr).toContain(
       `closed ${pane} · resume: brainyard pane start claude --cwd ${cwd} --resume ${row.sessionId}`,
@@ -121,6 +125,14 @@ describe.skipIf(!panesAvailable())('brainyard panes and pane … (real tmux)', (
     const again = cli(['pane', 'close', pane], { env });
     expect(again.code).toBe(1);
     expect(again.stderr).toContain(`no such pane: ${pane}`);
+  });
+
+  it('a pane nobody spoke in closes with nothing to resume', async () => {
+    const pane = start();
+    await until(() => screenOf(pane), 'fake-claude ready');
+    const closed = cli(['pane', 'close', pane], { env: { ...env, CLAUDE_CONFIG_DIR: tempDir() } });
+    expect(closed.code).toBe(0);
+    expect(closed.stderr).toContain(`closed ${pane} · nothing was said in it, so there is nothing to resume`);
   });
 
   it('types the text and then Enter as a key of its own; named keys go first', async () => {

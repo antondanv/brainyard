@@ -18,6 +18,7 @@ import {
   paneMemory,
   panesAvailable,
   sendToPane,
+  sessions,
   startPane,
   tidyPaths,
 } from '@antondanv/brainyard';
@@ -308,17 +309,30 @@ async function sendCommand(args: string[]): Promise<number> {
   return 0;
 }
 
+/** Whether the CLI wrote the conversation down: Claude Code keeps none of a session nobody spoke in. */
+async function saved(pane: PaneInfo, sessionId: string): Promise<boolean> {
+  if (!pane.brain || !pane.cwd) return false;
+  const list = await sessions({
+    cwd: pane.cwd,
+    brains: [pane.brain],
+    headless: true,
+    live: false,
+    limit: Number.MAX_SAFE_INTEGER,
+  });
+  return list.some((session) => session.id === sessionId);
+}
+
 async function closeCommand(args: string[]): Promise<number> {
   const { positionals } = parse(args, {});
   const [ref, ...extra] = positionals;
   noMore(extra);
   const pane = await findPane(ref);
   const sessionId = pane.sessionId ?? (await findPaneSession(pane))?.id;
+  const resumable = sessionId !== undefined && (await saved(pane, sessionId));
   if (!(await closePane(pane.pane))) throw new Failure(`no such pane: ${pane.pane}`);
-  const resume =
-    sessionId && pane.brain
-      ? ` · resume: brainyard pane start ${pane.brain}${cwdFlag(pane.cwd)} --resume ${sessionId}`
-      : '';
-  process.stderr.write(`closed ${pane.pane}${err.dim(resume)}\n`);
+  let tail = '';
+  if (resumable) tail = ` · resume: brainyard pane start ${pane.brain}${cwdFlag(pane.cwd)} --resume ${sessionId}`;
+  else if (sessionId) tail = ' · nothing was said in it, so there is nothing to resume';
+  process.stderr.write(`closed ${pane.pane}${err.dim(tail)}\n`);
   return 0;
 }
