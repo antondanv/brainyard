@@ -6,7 +6,7 @@
  * - **Its own tmux server** (`tmux -L brainyard -f /dev/null`): the person's
  *   tmux and its config are never touched, and nothing of theirs leaks in.
  * - **The CLI is the same interactive session `open()` starts**, so it is
- *   resumable and shows up in `claude --resume`, `codex resume` and agy.
+ *   resumable and shows up in `claude --resume`, `codex resume`, agy and OpenCode.
  * - **Cheap to watch**: a screen is one `capture-pane` of the visible grid,
  *   with colours; nothing is read for panes nobody looks at.
  * - **Cheap to keep**: `closePane()` ends the CLI; its conversation stays in
@@ -33,6 +33,7 @@ import {
 } from './process.js';
 import type { SessionInfo } from './sessions.js';
 import type { BrainId } from './types.js';
+import { BRAIN_IDS } from './types.js';
 
 export interface PaneOptions extends OpenOptions {
   /** Columns and rows of the pane's screen; a watcher resizes it to its view later. */
@@ -45,7 +46,7 @@ export interface PaneOptions extends OpenOptions {
 export interface PaneStart {
   pane: string;
   brain: BrainId;
-  /** Known at once for Claude Code and for a resumed session; Codex and Antigravity: `findPaneSession()`. */
+  /** Known at once for Claude Code and for a resumed session; the others: `findPaneSession()`. */
   sessionId?: string;
   /** ISO. */
   startedAt: string;
@@ -301,7 +302,7 @@ export async function listPanes(settings: PaneSettings = {}): Promise<PaneInfo[]
       width: Number(width) || 0,
       height: Number(height) || 0,
     };
-    if (brain === 'claude' || brain === 'codex' || brain === 'antigravity') info.brain = brain;
+    if ((BRAIN_IDS as readonly string[]).includes(brain ?? '')) info.brain = brain as BrainId;
     if (session) info.sessionId = session;
     if (label) info.label = label;
     if (cwd) info.cwd = cwd;
@@ -414,14 +415,14 @@ export async function resizePane(
   return got.ok;
 }
 
-/** Remembers which CLI session runs in the pane (Codex and Antigravity name it only after starting). */
+/** Remembers which CLI session runs in the pane (all but Claude Code name it only after starting). */
 export async function setPaneSession(pane: string, sessionId: string, settings: PaneSettings = {}): Promise<boolean> {
   const t = tmux(settings);
   if (!t) return false;
   return (await call(t, ['set-option', '-t', target(pane), '@session', literal(sessionId)])).ok;
 }
 
-/** The Codex or Antigravity session a pane started, found in the CLI's store. */
+/** The session a Codex, Antigravity or OpenCode pane started, found in the CLI's store. */
 export async function findPaneSession(
   info: PaneInfo,
   options: Pick<OpenOptions, 'env' | 'homes'> = {},

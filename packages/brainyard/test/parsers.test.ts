@@ -4,6 +4,7 @@ import type { ParsedEvent, StreamParser } from '../src/brains/adapter.js';
 import { antigravity } from '../src/brains/antigravity.js';
 import { claude } from '../src/brains/claude.js';
 import { codex } from '../src/brains/codex.js';
+import { opencode } from '../src/brains/opencode.js';
 
 const CWD = '/tmp/brainyard-work';
 
@@ -335,5 +336,161 @@ describe('antigravity parser', () => {
     });
     expect(parser.outcome()).toMatchObject({ error: 'boom', deniedTools: ['RunCommand'] });
     expect(events.map((e) => e.kind)).toEqual(['denied']);
+  });
+});
+
+describe('opencode parser', () => {
+  const S = 'ses_main';
+  const part = (type: string, fields: Record<string, unknown>, session = S) => ({
+    type,
+    timestamp: 1,
+    sessionID: S,
+    part: { id: `prt_${type}`, messageID: 'msg_1', sessionID: session, ...fields },
+  });
+  const step = () => part('step_start', { type: 'step-start' });
+  const finish = (
+    reason: string,
+    tokens = { input: 100, output: 10, reasoning: 2, cache: { read: 50, write: 5 } },
+    cost = 0,
+  ) => part('step_finish', { type: 'step-finish', reason, tokens: { total: 0, ...tokens }, cost });
+  const text = (value: string, session = S) => part('text', { type: 'text', text: value }, session);
+  const tool = (name: string, input: Record<string, unknown>, state: Record<string, unknown> = {}) =>
+    part('tool_use', { type: 'tool', tool: name, state: { status: 'completed', input, ...state } });
+
+  it('reads a whole run: actions, the last step as the answer, usage summed over steps', () => {
+    const parser = opencode.parser(CWD, 'sber/GigaChat-3-Pro');
+    const events = feed(parser, [
+      step(),
+      text('Let me write it.'),
+      tool('write', { filePath: `${CWD}/hello.txt`, content: 'hi' }, { output: 'Wrote file successfully.' }),
+      finish('tool-calls'),
+      step(),
+      tool('bash', { command: 'false' }, { output: 'boom', metadata: { output: 'boom', exit: 1 } }),
+      finish('tool-calls'),
+      step(),
+      part('reasoning', { type: 'reasoning', text: 'done now' }),
+      text('Done.'),
+      text('Both files are there.'),
+      finish('stop'),
+    ]);
+    expect(events[0]).toMatchObject({ kind: 'init', summary: 'OpenCode started · sber/GigaChat-3-Pro' });
+    const shown = events.filter((e) => e.feed).map((e) => e.summary);
+    expect(shown).toEqual([
+      'OpenCode started · sber/GigaChat-3-Pro',
+      'Let me write it.',
+      'wrote hello.txt',
+      'ran: false',
+      'command failed (exit 1): boom',
+      'Done.',
+      'Both files are there.',
+    ]);
+    expect(events.find((e) => e.kind === 'thinking')?.feed).toBe(false);
+    const outcome = parser.outcome();
+    expect(outcome).toMatchObject({ text: 'Done.\n\nBoth files are there.', sessionId: S, results: 1 });
+    // OpenCode counts reasoning apart from output; Brainyard counts it as a part of it.
+    expect(outcome.usage).toEqual({
+      inputTokens: 300,
+      outputTokens: 36,
+      reasoningTokens: 6,
+      cacheReadTokens: 150,
+      cacheWriteTokens: 15,
+    });
+    expect(outcome.costUsd).toBeUndefined();
+  });
+
+  it('reports a price when the provider has one, and never treats 0 as free', () => {
+    const priced = opencode.parser(CWD);
+    feed(priced, [step(), text('a'), finish('stop', undefined, 0.0042)]);
+    expect(priced.outcome().costUsd).toBe(0.0042);
+  });
+
+  it('a step that calls tools does not end the turn: exiting after one is a cut-off', () => {
+    const parser = opencode.parser(CWD);
+    feed(parser, [step(), tool('read', { filePath: 'a.txt' }), finish('tool-calls')]);
+    expect(parser.outcome().results).toBe(0);
+  });
+
+  it('records a refused tool as denied and a plain failure as a failed result', () => {
+    const parser = opencode.parser(CWD);
+    const events = feed(parser, [
+      step(),
+      tool(
+        'write',
+        { filePath: '/elsewhere/x' },
+        { status: 'error', error: 'The user rejected permission to use this specific tool call.' },
+      ),
+      tool(
+        'bash',
+        { command: 'rm x' },
+        {
+          status: 'error',
+          error: 'The user has specified a rule which prevents you from using this specific tool call.',
+        },
+      ),
+      tool('edit', { filePath: 'a.txt' }, { status: 'error', error: 'Could not find oldString in the file.' }),
+      finish('tool-calls'),
+    ]);
+    expect(events.filter((e) => e.kind === 'denied').map((e) => e.summary)).toEqual([
+      'the CLI refused write',
+      'the CLI refused bash',
+    ]);
+    expect(events.find((e) => e.kind === 'tool_result')?.summary).toBe(
+      'edit failed: Could not find oldString in the file.',
+    );
+    expect(parser.outcome().deniedTools).toEqual(['write', 'bash']);
+  });
+
+  it("takes the error, with the reference to OpenCode's log when it gives no reason", () => {
+    const parser = opencode.parser(CWD);
+    const events = feed(parser, [
+      {
+        type: 'error',
+        sessionID: S,
+        error: {
+          name: 'UnknownError',
+          data: { message: 'Unexpected server error. Check server logs for details.', ref: 'err_1' },
+        },
+      },
+    ]);
+    expect(events.map((e) => e.kind)).toEqual(['init', 'error']);
+    expect(parser.outcome()).toMatchObject({
+      error: 'Unexpected server error. Check server logs for details. (OpenCode log: err_1)',
+      results: 1,
+    });
+  });
+
+  it('names MCP tools by their server and patches by their files', () => {
+    const parser = opencode.parser(CWD, undefined, ['brainyard_demo', 'docs']);
+    const events = feed(parser, [
+      step(),
+      tool('brainyard_demo_secret_word', {}),
+      tool('apply_patch', {
+        patchText: `*** Begin Patch\n*** Update File: ${CWD}/a.ts\n@@\n*** Add File: b.ts\n*** End Patch`,
+      }),
+    ]);
+    expect(events.filter((e) => e.feed && e.kind !== 'init').map((e) => e.summary)).toEqual([
+      'called brainyard_demo: secret_word',
+      'edited a.ts, b.ts',
+    ]);
+  });
+
+  it('leaves the parts of a subagent session out of the answer and the turn count', () => {
+    const parser = opencode.parser(CWD);
+    feed(parser, [
+      step(),
+      text('child says hi', 'ses_child'),
+      part('step_finish', { type: 'step-finish', reason: 'stop', tokens: { input: 7 } }, 'ses_child'),
+      text('main answer'),
+      finish('stop'),
+    ]);
+    expect(parser.outcome()).toMatchObject({ text: 'main answer', results: 1 });
+    expect(parser.outcome().usage.inputTokens).toBe(107);
+  });
+
+  it('warns when the answer stopped at the output limit', () => {
+    const parser = opencode.parser(CWD);
+    const events = feed(parser, [step(), text('half an answer'), finish('length')]);
+    expect(events.at(-1)).toMatchObject({ kind: 'warning', feed: true });
+    expect(parser.outcome().results).toBe(1);
   });
 });

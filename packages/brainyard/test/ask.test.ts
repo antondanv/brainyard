@@ -51,15 +51,40 @@ describe('ask()', () => {
   });
 });
 
+describe('ask() with OpenCode', () => {
+  it('answers as an agent of its own: its instructions, no tools, no CLAUDE.md', async () => {
+    clearFlagCache();
+    const calls = recording();
+    const answer = await ask('opencode', 'What is 2+2?', {
+      command: FAKE.opencode,
+      env: { FAKE_RECORD: calls.path },
+      system: 'Answer with a number.',
+    });
+    expect(answer).toMatchObject({ brain: 'opencode', text: 'All done: What is 2+2?', costUsd: null });
+    const call = calls.read();
+    expect(call.cwd).toMatch(/brainyard-ask-/);
+    expect(call.stdin).toEqual(['What is 2+2?']);
+    expect(call.argv[call.argv.indexOf('--agent') + 1]).toBe('brainyard-answer');
+    expect(call.env.OPENCODE_DISABLE_CLAUDE_CODE).toBe('1');
+    expect(JSON.parse(call.env.OPENCODE_CONFIG_CONTENT ?? '{}').agent['brainyard-answer']).toMatchObject({
+      prompt: 'Answer with a number.',
+      permission: { '*': 'deny' },
+    });
+    expect(JSON.parse(call.env.OPENCODE_PERMISSION ?? '{}')).toMatchObject({ edit: 'deny', bash: 'deny' });
+  });
+});
+
 describe('askAll()', () => {
   it('asks several CLIs in parallel and never throws', async () => {
     vi.stubEnv('BRAINYARD_CLAUDE_BIN', JSON.stringify(FAKE.claude));
     vi.stubEnv('BRAINYARD_CODEX_BIN', JSON.stringify(FAKE.codex));
     vi.stubEnv('BRAINYARD_AGY_BIN', 'no-such-binary-brainyard');
+    vi.stubEnv('BRAINYARD_OPENCODE_BIN', JSON.stringify(FAKE.opencode));
     const entries = await askAll('hello');
-    expect(entries.map((entry) => entry.brain)).toEqual(['claude', 'codex', 'antigravity']);
+    expect(entries.map((entry) => entry.brain)).toEqual(['claude', 'codex', 'antigravity', 'opencode']);
     expect(entries[0]?.result?.text).toBe('DONE');
     expect(entries[1]?.result?.text).toBe('Answer to: hello');
     expect(entries[2]?.error?.kind).toBe('not_installed');
+    expect(entries[3]?.result?.text).toBe('All done: hello');
   });
 });

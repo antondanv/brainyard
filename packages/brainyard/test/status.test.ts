@@ -8,8 +8,8 @@ describe('status()', () => {
   it('reads version and sign-in of each CLI for free', async () => {
     clearCatalogCache();
     const report = await status({ commands: FAKE, models: true });
-    const [claude, codex, agy] = report.brains;
-    expect(report.ready).toEqual(['claude', 'codex', 'antigravity']);
+    const [claude, codex, agy, opencode] = report.brains;
+    expect(report.ready).toEqual(['claude', 'codex', 'antigravity', 'opencode']);
     expect(claude).toMatchObject({
       availability: 'ready',
       version: '2.1.999',
@@ -23,6 +23,17 @@ describe('status()', () => {
     expect(codex?.models?.models.map((m) => m.id)).toEqual(['gpt-test-mini', 'gpt-test-big']);
     expect(agy).toMatchObject({ availability: 'ready', version: '1.2.999', auth: { state: 'logged_in' } });
     expect(agy?.models?.models.map((m) => m.id)).toEqual(['gemini-9-flash', 'claude-x']);
+    // OpenCode has no account of its own: the providers it can use are the sign-in.
+    expect(opencode).toMatchObject({
+      availability: 'ready',
+      version: '1.18.999',
+      auth: { state: 'logged_in', method: 'opencode, sber' },
+    });
+    expect(opencode?.models?.models.map((m) => m.id)).toEqual([
+      'opencode/big-pickle',
+      'opencode/muse-free',
+      'sber/GigaChat-3-Pro',
+    ]);
     expect(report.brainyard).toMatch(/^\d+\.\d+\.\d+/);
   });
 
@@ -33,11 +44,13 @@ describe('status()', () => {
 
   it('knows a signed-out CLI and says what to do', async () => {
     vi.stubEnv('FAKE_AUTH', 'out');
-    const [claude, codex, agy] = (await status({ commands: FAKE })).brains;
+    const [claude, codex, agy, opencode] = (await status({ commands: FAKE })).brains;
     expect(claude?.availability).toBe('needs_login');
     expect(claude?.fix).toMatch(/sign in/);
     expect(codex?.availability).toBe('needs_login');
     expect(agy?.availability).toBe('needs_login');
+    expect(opencode?.availability).toBe('needs_login');
+    expect(opencode?.fix).toMatch(/opencode auth login/);
   });
 
   it('does not call a CLI signed out when an API key is in the environment', async () => {

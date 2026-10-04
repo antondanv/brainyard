@@ -6,10 +6,12 @@
 import { type Command, capture } from './process.js';
 import type { BrainId } from './types.js';
 
-const HELP_ARGS: Record<BrainId, string[]> = {
-  claude: ['--help'],
-  codex: ['exec', '--help'],
-  antigravity: ['--help'],
+const HELP_ARGS: Record<BrainId, string[][]> = {
+  claude: [['--help']],
+  codex: [['exec', '--help']],
+  antigravity: [['--help']],
+  // `run` and the TUI take different flags; one set serves both.
+  opencode: [['--help'], ['run', '--help']],
 };
 
 const cache = new Map<string, Promise<ReadonlySet<string>>>();
@@ -25,8 +27,8 @@ export function cliFlags(brain: BrainId, command: Command): Promise<ReadonlySet<
 }
 
 async function probe(brain: BrainId, command: Command): Promise<ReadonlySet<string>> {
-  const got = await capture(command, HELP_ARGS[brain], { timeoutMs: 15_000 });
-  return new Set(`${got.stdout}\n${got.stderr}`.match(/--[a-z][a-z0-9-]*/g) ?? []);
+  const helps = await Promise.all(HELP_ARGS[brain].map((args) => capture(command, args, { timeoutMs: 15_000 })));
+  return new Set(helps.flatMap((got) => `${got.stdout}\n${got.stderr}`.match(/--[a-z][a-z0-9-]*/g) ?? []));
 }
 
 export function clearFlagCache(): void {

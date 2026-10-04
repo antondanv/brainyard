@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { clearFlagCache } from '../src/flags.js';
 import { open, planOpen } from '../src/open.js';
 import { claudeProjectDir, liveSessions, sessions, stopSession } from '../src/sessions.js';
+import { openStore } from './fixtures/opencode-store.mjs';
 import { FAKE, recording, tempDir } from './helpers.js';
 
 const lines = (...entries: unknown[]) => `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`;
@@ -385,6 +386,90 @@ describe('sessions: Antigravity without a workspace in its database', () => {
   });
 });
 
+describe('sessions: OpenCode', () => {
+  it("reads its database: the folder's own sessions, the first prompt until a title is generated", async () => {
+    const cwd = project();
+    const home = tempDir();
+    const store = openStore(join(home, 'opencode.db'));
+    store.session({
+      id: 'ses_named',
+      directory: cwd,
+      title: 'Анализ проекта',
+      created: 1790000000000,
+      updated: 1790000500000,
+    });
+    store.session({
+      id: 'ses_fresh',
+      directory: cwd,
+      title: 'New session - 2026-10-04T10:00:00.000Z',
+      created: 1790000600000,
+    });
+    store.message({ session: 'ses_fresh', role: 'user', text: 'Собери сайт\nи задеплой', at: 1790000600001 });
+    store.session({ id: 'ses_child', directory: cwd, title: 'Explore (@explore subagent)', parent: 'ses_named' });
+    store.session({ id: 'ses_archived', directory: cwd, title: 'Убран', archived: 1790000000001 });
+    store.session({ id: 'ses_run', directory: cwd, title: 'fix it', run: true });
+    store.session({ id: 'ses_other', directory: '/elsewhere', title: 'Не здесь' });
+    store.close();
+    const options = { cwd, brains: ['opencode'], homes: { opencode: home }, live: false };
+    const list = await sessions(options);
+    expect(list.map((s) => [s.id, s.title, s.titleSource, s.interactive])).toEqual([
+      ['ses_fresh', 'Собери сайт и задеплой', 'prompt', true],
+      ['ses_named', 'Анализ проекта', 'generated', true],
+    ]);
+    expect(list[1]).toMatchObject({
+      cwd,
+      startedAt: new Date(1790000000000).toISOString(),
+      updatedAt: new Date(1790000500000).toISOString(),
+    });
+    // `opencode run` sessions are headless: listed only when asked for.
+    const all = await sessions({ ...options, headless: true });
+    expect(all.find((s) => s.id === 'ses_run')).toMatchObject({ interactive: false, title: 'fix it' });
+  });
+
+  it('live: an answer still being written is work, a finished or abandoned one is not', async () => {
+    const cwd = project();
+    const home = tempDir();
+    const now = Date.now();
+    const store = openStore(join(home, 'opencode.db'));
+    for (const [id, completed, at] of [
+      ['ses_busy', false, now],
+      ['ses_idle', true, now],
+      ['ses_abandoned', false, now - 3_600_000],
+    ] as const) {
+      store.session({ id, directory: cwd, title: id, created: at - 5000, updated: at });
+      store.message({ session: id, role: 'user', text: 'go', at: at - 4000 });
+      store.message({ session: id, role: 'assistant', at: at - 3000, completed });
+    }
+    store.session({ id: 'ses_asked', directory: cwd, title: 'asked', created: now - 100, updated: now });
+    store.message({ session: 'ses_asked', role: 'user', text: 'just sent', at: now - 50 });
+    store.session({ id: 'ses_run', directory: cwd, title: 'run', created: now - 100, updated: now, run: true });
+    store.message({ session: 'ses_run', role: 'assistant', at: now - 50, completed: false });
+    store.close();
+    const live = await liveSessions({ cwd, brains: ['opencode'], homes: { opencode: home } });
+    expect(new Map(live.map((s) => [s.id, s.live?.status]))).toEqual(
+      new Map([
+        ['ses_busy', 'busy'],
+        ['ses_asked', 'busy'],
+        ['ses_run', 'busy'],
+      ]),
+    );
+    // A headless run at work is still not a session to come back to.
+    const list = await sessions({ cwd, brains: ['opencode'], homes: { opencode: home } });
+    expect(
+      list
+        .filter((s) => s.live)
+        .map((s) => s.id)
+        .sort(),
+    ).toEqual(['ses_asked', 'ses_busy']);
+    const withRuns = await sessions({ cwd, brains: ['opencode'], homes: { opencode: home }, headless: true });
+    expect(withRuns.find((s) => s.id === 'ses_run')?.live?.status).toBe('busy');
+  });
+
+  it('is an empty list when there is no database', async () => {
+    expect(await sessions({ cwd: project(), brains: ['opencode'], homes: { opencode: tempDir() } })).toEqual([]);
+  });
+});
+
 describe('planOpen', () => {
   it('Claude Code: session id up front, a name, instructions in the system prompt, the prompt after --', async () => {
     const cwd = project();
@@ -518,6 +603,50 @@ describe('planOpen', () => {
     expect(plan.warnings).toEqual([]);
   });
 
+  it('OpenCode: model, plan agent, and instructions with the prompt bound to its flag', async () => {
+    const plan = await planOpen({
+      brain: 'opencode',
+      cwd: project(),
+      prompt: '---starts with dashes',
+      system: 'You work on node k3f9.',
+      model: 'sber/GigaChat-3-Pro',
+      permissionMode: 'plan',
+      command: FAKE.opencode,
+    });
+    expect(plan.args).toEqual([
+      '--model',
+      'sber/GigaChat-3-Pro',
+      '--agent',
+      'plan',
+      '--prompt=You work on node k3f9.\n\n---starts with dashes',
+    ]);
+    expect(plan.sessionId).toBeUndefined();
+    expect(plan.warnings).toEqual([]);
+  });
+
+  it('OpenCode: resume, bypassPermissions as --auto, and what it cannot do said out loud', async () => {
+    const plan = await planOpen({
+      brain: 'opencode',
+      cwd: project(),
+      resume: 'ses_abc',
+      name: 'auth refactor',
+      effort: 'high',
+      worktree: true,
+      permissionMode: 'bypassPermissions',
+      command: FAKE.opencode,
+    });
+    expect(plan.args).toEqual(['--session', 'ses_abc', '--auto']);
+    expect(plan.sessionId).toBe('ses_abc');
+    expect(plan.warnings).toHaveLength(3);
+    const odd = await planOpen({
+      brain: 'opencode',
+      cwd: project(),
+      permissionMode: 'dontAsk',
+      command: FAKE.opencode,
+    });
+    expect(odd.warnings[0]).toMatch(/no "dontAsk" mode/);
+  });
+
   it('refuses a folder that does not exist', async () => {
     await expect(planOpen({ brain: 'claude', cwd: '/no/such/folder', command: FAKE.claude })).rejects.toThrow(
       /no such folder/,
@@ -635,6 +764,24 @@ describe('open', () => {
       homes: { antigravity: home },
     });
     expect(result).toMatchObject({ ok: true, sessionId: 'conv-new' });
+  });
+
+  it('OpenCode: the new session is found in its database after the TUI exits', async () => {
+    const cwd = project();
+    const home = tempDir();
+    const calls = recording();
+    const result = await open({
+      brain: 'opencode',
+      cwd,
+      prompt: 'Собери сайт',
+      command: FAKE.opencode,
+      env: { FAKE_OPENCODE_HOME: home, FAKE_SESSION_ID: 'ses_fromTui', FAKE_RECORD: calls.path },
+      homes: { opencode: home },
+    });
+    expect(result).toMatchObject({ ok: true, sessionId: 'ses_fromTui' });
+    expect(calls.read().argv).toEqual(['--prompt=Собери сайт']);
+    const [found] = await sessions({ cwd, brains: ['opencode'], homes: { opencode: home }, live: false });
+    expect(found).toMatchObject({ id: 'ses_fromTui', title: 'Собери сайт', titleSource: 'prompt' });
   });
 
   it('says so when the store has no trace of the session', async () => {

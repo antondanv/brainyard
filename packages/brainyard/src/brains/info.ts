@@ -97,6 +97,26 @@ export const BRAINS: Record<BrainId, BrainInfo> = {
       limits: false,
     },
   },
+  opencode: {
+    id: 'opencode',
+    label: 'OpenCode',
+    vendor: 'Anomaly',
+    binary: 'opencode',
+    envVar: 'BRAINYARD_OPENCODE_BIN',
+    install: 'npm install -g opencode-ai',
+    login: 'run `opencode auth login` and connect a provider (or set its API key)',
+    homepage: 'https://opencode.ai',
+    capabilities: {
+      steering: false,
+      resume: true,
+      mcp: true,
+      reportsCost: true,
+      webSwitch: true,
+      shellSwitch: true,
+      modelList: true,
+      limits: false,
+    },
+  },
 };
 
 const ALIASES: Record<string, BrainId> = {
@@ -107,6 +127,8 @@ const ALIASES: Record<string, BrainId> = {
   'openai-codex': 'codex',
   agy: 'antigravity',
   'antigravity-cli': 'antigravity',
+  'open-code': 'opencode',
+  'opencode-ai': 'opencode',
 };
 
 /** `claude-code` → `claude`, `agy` → `antigravity`. Throws on an unknown name. */

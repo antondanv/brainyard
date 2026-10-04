@@ -18,6 +18,7 @@ function cli(args: string[], options: { input?: string; env?: Record<string, str
       BRAINYARD_CLAUDE_BIN: JSON.stringify(FAKE.claude),
       BRAINYARD_CODEX_BIN: JSON.stringify(FAKE.codex),
       BRAINYARD_AGY_BIN: JSON.stringify(FAKE.antigravity),
+      BRAINYARD_OPENCODE_BIN: JSON.stringify(FAKE.opencode),
       ...options.env,
     },
     timeout: 30_000,
@@ -30,12 +31,12 @@ describe('brainyard CLI', () => {
     const { code, stdout } = cli(['status']);
     expect(code).toBe(0);
     expect(stdout).toContain('Claude Code');
-    expect(stdout).toContain('3 of 3 ready');
+    expect(stdout).toContain('4 of 4 ready');
   });
 
   it('prints status as JSON and exits 1 when a named brain is not ready', () => {
     const ok = cli(['status', '--json']);
-    expect(JSON.parse(ok.stdout).ready).toEqual(['claude', 'codex', 'antigravity']);
+    expect(JSON.parse(ok.stdout).ready).toEqual(['claude', 'codex', 'antigravity', 'opencode']);
     const missing = cli(['status', '--brain', 'codex'], { env: { BRAINYARD_CODEX_BIN: 'no-such-binary-brainyard' } });
     expect(missing.code).toBe(1);
     expect(missing.stdout).toContain('not installed');
@@ -82,6 +83,13 @@ describe('brainyard CLI', () => {
     expect(code).toBe(1);
     expect(stderr).toContain('not_installed');
     expect(stderr).toContain('npm install -g @openai/codex');
+  });
+
+  it('lists the models OpenCode runs, with their reasoning variants', () => {
+    const { code, stdout } = cli(['models', 'opencode']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('OpenCode');
+    expect(stdout).toMatch(/opencode\/muse-free\s+minimal, low, high/);
   });
 
   it('lists models', () => {

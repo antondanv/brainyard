@@ -23,6 +23,13 @@ describe('classifyFailure', () => {
   it('recognises a dropped connection', () => {
     expect(classifyFailure('fetch failed: ECONNRESET').kind).toBe('network');
     expect(classifyFailure('upstream returned 503').kind).toBe('network');
+    // OpenCode, when a provider's endpoint is down.
+    expect(
+      classifyFailure('Cannot connect to API: Unable to connect. Is the computer able to access the url?'),
+    ).toEqual({
+      kind: 'network',
+      retryable: true,
+    });
   });
 
   it('does not read a status code into an unrelated number', () => {

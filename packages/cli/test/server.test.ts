@@ -12,6 +12,7 @@ beforeEach(async () => {
   vi.stubEnv('BRAINYARD_CLAUDE_BIN', JSON.stringify(FAKE.claude));
   vi.stubEnv('BRAINYARD_CODEX_BIN', JSON.stringify(FAKE.codex));
   vi.stubEnv('BRAINYARD_AGY_BIN', JSON.stringify(FAKE.antigravity));
+  vi.stubEnv('BRAINYARD_OPENCODE_BIN', JSON.stringify(FAKE.opencode));
   server = await serve({ port: 0, token: TOKEN });
 });
 
@@ -107,7 +108,7 @@ describe('dashboard server', () => {
     const reply = await call('/api/status', { headers: auth });
     expect(reply.status).toBe(200);
     const report = JSON.parse(reply.body);
-    expect(report.brains.map((b: { id: string }) => b.id)).toEqual(['claude', 'codex', 'antigravity']);
+    expect(report.brains.map((b: { id: string }) => b.id)).toEqual(['claude', 'codex', 'antigravity', 'opencode']);
     expect(report.brains[1].models.models.length).toBeGreaterThan(0);
   });
 

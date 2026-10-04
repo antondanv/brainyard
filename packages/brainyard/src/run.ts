@@ -168,7 +168,7 @@ class Run implements AgentRun {
     const { launch } = resolved;
     for (const warning of [...resolved.warnings, ...plan.warnings]) this.#warn(warning);
 
-    const parser = this.#adapter.parser(launch.cwd, launch.model);
+    const parser = this.#adapter.parser(launch.cwd, launch.model, Object.keys(launch.mcpServers));
     this.#parser = parser;
     if (this.#halted) {
       plan.cleanup?.();

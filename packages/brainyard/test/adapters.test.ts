@@ -1,12 +1,13 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Launch } from '../src/brains/adapter.js';
 import { antigravity, PRINT_TIMEOUT } from '../src/brains/antigravity.js';
 import { ANSWER_SYSTEM, claude, WORKSPACE_SETTINGS } from '../src/brains/claude.js';
 import { codex, toml, unwrap } from '../src/brains/codex.js';
+import { ANSWER_AGENT, opencode, opencodeDefaultModel, parseJsonc } from '../src/brains/opencode.js';
 import { tempDir } from './helpers.js';
 
 const TRICKY = '--- front matter\nprompt that starts with a dash';
@@ -37,6 +38,7 @@ describe('every adapter', () => {
     ['claude', claude],
     ['codex', codex],
     ['antigravity', antigravity],
+    ['opencode', opencode],
   ] as const)('%s never puts the prompt on the command line', (_name, adapter) => {
     for (const steerable of [true, false]) {
       const plan = adapter.plan(launch({ steerable }));
@@ -247,5 +249,112 @@ describe('antigravity', () => {
       role: 'user',
       content: [{ type: 'text', text: 'hi' }],
     });
+  });
+});
+
+describe('opencode', () => {
+  const env = (plan: { env: Record<string, string> }, name: string) => JSON.parse(plan.env[name] ?? '{}');
+
+  it('runs one prompt from stdin, titled after it instead of a generated title', () => {
+    const plan = opencode.plan(launch({ brain: 'opencode' }));
+    expect(plan.input).toBe('text');
+    expect(plan.args.slice(0, 3)).toEqual(['run', '--format', 'json']);
+    expect(plan.args).toContain('--title=');
+    const resumed = opencode.plan(launch({ brain: 'opencode', resume: 'ses_abc' })).args;
+    expect(flagValue(resumed, '--session')).toBe('ses_abc');
+    expect(resumed).not.toContain('--title=');
+  });
+
+  it('maps access levels to its permissions; the shell is off where it cannot be confined', () => {
+    const full = opencode.plan(launch({ brain: 'opencode' }));
+    expect(full.args).toContain('--auto');
+    expect(full.env.OPENCODE_PERMISSION).toBeUndefined();
+    const workspace = opencode.plan(launch({ brain: 'opencode', access: 'workspace' }));
+    expect(env(workspace, 'OPENCODE_PERMISSION')).toEqual({ external_directory: 'deny', bash: 'deny' });
+    expect(workspace.args).not.toContain('--auto');
+    expect(workspace.warnings[0]).toMatch(/cannot confine its shell/);
+    const readonly = opencode.plan(launch({ brain: 'opencode', access: 'readonly' }));
+    expect(env(readonly, 'OPENCODE_PERMISSION')).toEqual({ edit: 'deny', bash: 'deny' });
+    expect(readonly.warnings).toEqual([]);
+  });
+
+  it('uses the old name of --auto only where the CLI has nothing else', () => {
+    const old = opencode.plan(launch({ brain: 'opencode', flags: new Set(['--dangerously-skip-permissions']) }));
+    expect(old.args).toContain('--dangerously-skip-permissions');
+    expect(old.args).not.toContain('--auto');
+  });
+
+  it('switches web and shell off by name', () => {
+    const plan = opencode.plan(launch({ brain: 'opencode', web: false, shell: false }));
+    expect(env(plan, 'OPENCODE_PERMISSION')).toEqual({
+      webfetch: 'deny',
+      websearch: 'deny',
+      codesearch: 'deny',
+      bash: 'deny',
+    });
+  });
+
+  it('lets the agent answer after a refusal, and passes MCP servers as inline config', () => {
+    const plan = opencode.plan(
+      launch({
+        brain: 'opencode',
+        mcpServers: { docs: { command: 'node', args: ['server.js'], env: { TOKEN: 'x' } } },
+      }),
+    );
+    expect(env(plan, 'OPENCODE_CONFIG_CONTENT')).toEqual({
+      experimental: { continue_loop_on_deny: true },
+      mcp: { docs: { type: 'local', command: ['node', 'server.js'], environment: { TOKEN: 'x' } } },
+    });
+  });
+
+  it('passes model, effort and thinking where the CLI has them', () => {
+    const args = opencode.plan(
+      launch({ brain: 'opencode', model: 'sber/GigaChat-3-Pro', effort: 'high', flags: new Set(['--thinking']) }),
+    ).args;
+    expect(flagValue(args, '--model')).toBe('sber/GigaChat-3-Pro');
+    expect(flagValue(args, '--variant')).toBe('high');
+    expect(args).toContain('--thinking');
+  });
+
+  it('answers as an agent of its own: no coding persona, no tools, no CLAUDE.md', () => {
+    const plan = opencode.plan(launch({ brain: 'opencode', isolated: true, access: 'readonly', web: false }));
+    expect(flagValue(plan.args, '--agent')).toBe(ANSWER_AGENT);
+    expect(plan.env.OPENCODE_DISABLE_CLAUDE_CODE).toBe('1');
+    const agent = env(plan, 'OPENCODE_CONFIG_CONTENT').agent[ANSWER_AGENT];
+    expect(agent).toMatchObject({ mode: 'primary', prompt: ANSWER_SYSTEM, permission: { '*': 'deny' } });
+    expect(plan.prompt).toBe(TRICKY);
+    const framed = opencode.plan(
+      launch({ brain: 'opencode', isolated: true, access: 'readonly', web: true, system: 'Be brief.' }),
+    );
+    expect(env(framed, 'OPENCODE_CONFIG_CONTENT').agent[ANSWER_AGENT]).toMatchObject({
+      prompt: 'Be brief.',
+      permission: { '*': 'deny', webfetch: 'allow', websearch: 'allow' },
+    });
+  });
+
+  it("keeps what the caller's environment already sets, under its own settings", () => {
+    vi.stubEnv('OPENCODE_CONFIG_CONTENT', JSON.stringify({ model: 'x/y', experimental: { other: 1 } }));
+    vi.stubEnv('OPENCODE_PERMISSION', JSON.stringify({ read: 'allow', bash: 'allow' }));
+    const plan = opencode.plan(launch({ brain: 'opencode', access: 'readonly' }));
+    expect(env(plan, 'OPENCODE_CONFIG_CONTENT')).toEqual({
+      model: 'x/y',
+      experimental: { other: 1, continue_loop_on_deny: true },
+    });
+    expect(env(plan, 'OPENCODE_PERMISSION')).toEqual({ read: 'allow', bash: 'deny', edit: 'deny' });
+  });
+
+  it('reads config the way OpenCode writes it: comments and trailing commas', () => {
+    expect(
+      parseJsonc('{\n  // the default\n  "model": "sber/GigaChat-3-Pro", /* note */\n  "url": "http://a//b,}",\n}'),
+    ).toEqual({ model: 'sber/GigaChat-3-Pro', url: 'http://a//b,}' });
+  });
+
+  it('finds the default model in the config, the inline one first', () => {
+    const home = tempDir();
+    mkdirSync(join(home, 'opencode'));
+    writeFileSync(join(home, 'opencode', 'opencode.jsonc'), '{\n  // mine\n  "model": "sber/GigaChat-3-Pro",\n}');
+    expect(opencodeDefaultModel({ XDG_CONFIG_HOME: home })).toBe('sber/GigaChat-3-Pro');
+    expect(opencodeDefaultModel({ XDG_CONFIG_HOME: home, OPENCODE_CONFIG_CONTENT: '{"model":"a/b"}' })).toBe('a/b');
+    expect(opencodeDefaultModel({ XDG_CONFIG_HOME: tempDir() })).toBeUndefined();
   });
 });

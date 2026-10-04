@@ -7,13 +7,16 @@
  * - Codex has `codex login status`.
  * - Antigravity has neither; `agy models` fetches the model list with your
  *   account, so a list coming back is the sign-in check.
+ * - OpenCode has no account of its own: it runs the providers you connected,
+ *   and `opencode models` lists only theirs — an empty list means none is.
  * Only a real call proves the whole path (network, account, model, limits):
  * that is `live: true`, the cheapest model and a one-word answer.
  */
 import { ask } from './ask.js';
 import { codexDefaultModel } from './brains/codex.js';
 import { BRAINS, type Capabilities } from './brains/info.js';
-import { type Catalog, models, rememberAgyModels } from './catalog.js';
+import { opencodeDefaultModel } from './brains/opencode.js';
+import { type Catalog, models, rememberAgyModels, rememberOpencodeModels } from './catalog.js';
 import { BrainyardError, classifyFailure } from './errors.js';
 import { oneLine } from './humanize.js';
 import { type Command, capture, resolveCommand } from './process.js';
@@ -78,7 +81,7 @@ export interface StatusReport {
 }
 
 export interface StatusOptions {
-  /** Defaults to all three. */
+  /** Defaults to every CLI Brainyard knows. */
   brains?: BrainId[];
   /** One real, minimal call per installed CLI to prove it works (costs a fraction of a cent). */
   live?: boolean;
@@ -133,7 +136,8 @@ export async function checkBrain(id: BrainId, options: StatusOptions = {}): Prom
   const [version, auth, catalog] = await Promise.all([
     readVersion(command),
     readAuth(id, command, options.revealAccount === true),
-    options.models && id !== 'antigravity'
+    // Antigravity and OpenCode list their models as the sign-in check: one call gives both.
+    options.models && id !== 'antigravity' && id !== 'opencode'
       ? models(id, override === undefined ? {} : { command: override })
       : undefined,
   ]);
@@ -148,10 +152,8 @@ export async function checkBrain(id: BrainId, options: StatusOptions = {}): Prom
   if (version.version) out.version = version.version;
   const theCatalog = catalog ?? auth.catalog;
   if (options.models && theCatalog) out.models = theCatalog;
-  if (id === 'codex') {
-    const fallback = codexDefaultModel();
-    if (fallback) out.defaultModel = fallback;
-  }
+  const fallback = id === 'codex' ? codexDefaultModel() : id === 'opencode' ? opencodeDefaultModel() : undefined;
+  if (fallback) out.defaultModel = fallback;
 
   if (!version.version) {
     out.availability = 'error';
@@ -242,6 +244,7 @@ async function readAuth(id: BrainId, command: Command, reveal: boolean): Promise
   try {
     if (id === 'claude') return { auth: await claudeAuth(command, reveal) };
     if (id === 'codex') return { auth: await codexAuth(command) };
+    if (id === 'opencode') return await opencodeAuth(command);
     return await antigravityAuth(command);
   } catch (error) {
     return { auth: { state: 'unknown', detail: (error as Error).message } };
@@ -309,6 +312,22 @@ async function antigravityAuth(command: Command): Promise<AuthRead> {
   };
 }
 
+async function opencodeAuth(command: Command): Promise<AuthRead> {
+  const got = await capture(command, ['models', '--verbose'], { timeoutMs: AUTH_TIMEOUT_MS });
+  const catalog = got.code === 0 ? rememberOpencodeModels(command, got.stdout) : undefined;
+  if (catalog) {
+    const providers = [...new Set(catalog.models.map((model) => model.id.split('/')[0]))];
+    return { auth: { state: 'logged_in', method: providers.join(', ') }, catalog };
+  }
+  if (got.code === 0) {
+    return { auth: { state: 'logged_out', detail: 'no provider is connected: `opencode models` lists nothing' } };
+  }
+  const text = `${got.stdout}\n${got.stderr}`;
+  return {
+    auth: { state: 'unknown', detail: got.timedOut ? '`opencode models` did not answer' : oneLine(text).slice(0, 160) },
+  };
+}
+
 const PING_PROMPT = 'Reply with exactly one word: pong';
 
 /** The cheapest real call each CLI allows: proves network, account, model and limits. */
@@ -321,6 +340,8 @@ export async function ping(
     claude: { model: 'haiku' },
     codex: { effort: 'low' },
     antigravity: { effort: 'low' },
+    // Its models are whatever providers you connected: the one you chose as default.
+    opencode: {},
   };
   try {
     const answer = await ask(brain, PING_PROMPT, {

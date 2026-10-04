@@ -13,6 +13,9 @@ export function recorder(args) {
       CLAUDE_CODE_CHILD_SESSION: process.env.CLAUDE_CODE_CHILD_SESSION ?? null,
       CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID ?? null,
       CLAUDE_EFFORT: process.env.CLAUDE_EFFORT ?? null,
+      OPENCODE_PERMISSION: process.env.OPENCODE_PERMISSION ?? null,
+      OPENCODE_CONFIG_CONTENT: process.env.OPENCODE_CONFIG_CONTENT ?? null,
+      OPENCODE_DISABLE_CLAUDE_CODE: process.env.OPENCODE_DISABLE_CLAUDE_CODE ?? null,
     },
   };
   process.on('exit', () => {

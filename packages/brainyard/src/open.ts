@@ -3,7 +3,8 @@
  * and the screen until it exits, or — Claude Code only — in the background.
  *
  * The session that comes out is the CLI's own, so it is the one
- * `claude --resume`, `codex resume` and `agy --conversation` show later. That
+ * `claude --resume`, `codex resume`, `agy --conversation` and
+ * `opencode --session` show later. That
  * is the difference from `run()`: a headless run is resumable by id, but
  * Claude Code keeps it out of its picker.
  *
@@ -11,8 +12,8 @@
  *   (`--name`) that its picker, agent view and terminal title show.
  *   Background sessions manage their own id: Brainyard reads the short id
  *   from the output and asks `claude agents` for the full one.
- * - Codex and Antigravity take neither: after the CLI exits, the session is
- *   found in its store by folder and start time.
+ * - Codex, Antigravity and OpenCode take neither: after the CLI exits, the
+ *   session is found in its store by folder and start time.
  */
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
@@ -35,8 +36,8 @@ export interface OpenOptions {
   /**
    * Standing instructions for the session. Claude Code appends them to its
    * system prompt, where they stay out of the conversation and survive
-   * resumes; Codex and Antigravity have no such slot, so they get them in
-   * front of the first message.
+   * resumes; Codex, Antigravity and OpenCode have no such slot, so they get
+   * them in front of the first message.
    */
   system?: string;
   /** Continue this session instead of starting one. */
@@ -51,6 +52,8 @@ export interface OpenOptions {
    * Claude Code: `default`, `plan`, `acceptEdits`, `auto`…
    * Antigravity: `plan`, `accept-edits` (`acceptEdits` is translated) or
    * `bypassPermissions` — every tool approved (`--dangerously-skip-permissions`).
+   * OpenCode: `plan` (its plan agent), `acceptEdits` (its default) or
+   * `bypassPermissions` — every question approved (`--auto`).
    */
   permissionMode?: string;
   /** Claude Code: work in a new git worktree; a string names it. */
@@ -178,7 +181,7 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
     args.push(...(options.extraArgs ?? []));
     const first = joinText(system, prompt);
     if (first) args.push('--', first);
-  } else {
+  } else if (brain === 'antigravity') {
     args = [];
     if (resume) args.push('--conversation', resume);
     if (options.name?.trim()) warnings.push('Antigravity does not take session names');
@@ -198,6 +201,31 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
     // `=` binds the value to the flag, dash or not.
     const first = joinText(system, prompt);
     if (first) args.push(`--prompt-interactive=${first}`);
+  } else {
+    args = [];
+    if (resume) args.push('--session', resume);
+    if (options.name?.trim()) {
+      warnings.push('OpenCode does not take session names: it titles the session after the first message');
+    }
+    if (options.model) args.push('--model', options.model);
+    if (options.effort)
+      warnings.push('OpenCode picks the reasoning variant inside the session (ctrl+t), not on its command line');
+    const mode = options.permissionMode;
+    if (mode === 'plan') args.push('--agent', 'plan');
+    else if (mode === 'bypassPermissions') {
+      if (flags.has('--auto')) args.push('--auto');
+      else
+        warnings.push(
+          'this OpenCode cannot approve everything up front (no --auto); update it with `opencode upgrade`',
+        );
+    } else if (mode && mode !== 'acceptEdits' && mode !== 'default') {
+      warnings.push(`OpenCode has no "${mode}" mode, only plan, acceptEdits (its default) and bypassPermissions`);
+    }
+    if (options.worktree) warnings.push('OpenCode does not create worktrees from the command line');
+    args.push(...(options.extraArgs ?? []));
+    // `=` binds the value to the flag, dash or not; the TUI sends it at once.
+    const first = joinText(system, prompt);
+    if (first) args.push(`--prompt=${first}`);
   }
 
   const plan: OpenPlan = {

@@ -3,7 +3,7 @@
  * and a terminal dump: `Bash {"command":"npm test"}` becomes `ran: npm test`.
  *
  * Parsing each CLI's schema is the adapter's job; how an action is *called*
- * is shared, so fixing a phrase for one CLI fixes it for all three.
+ * is shared, so fixing a phrase for one CLI fixes it for all of them.
  */
 import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -47,11 +47,28 @@ const BUILTIN: Record<string, Phrase> = {
   list_dir: ['tool_call', 'listed', 'DirectoryPath'],
   search_web: ['tool_call', 'searched the web:', 'query'],
   read_url_content: ['tool_call', 'opened', 'Url'],
+  // OpenCode
+  read: ['tool_call', 'read', 'filePath'],
+  write: ['file_write', 'wrote', 'filePath'],
+  edit: ['file_write', 'edited', 'filePath'],
+  multiedit: ['file_write', 'edited', 'filePath'],
+  bash: ['command', 'ran:', 'command'],
+  glob: ['tool_call', 'looked for files:', 'pattern'],
+  grep: ['tool_call', 'searched files for:', 'pattern'],
+  list: ['tool_call', 'listed', 'path'],
+  webfetch: ['tool_call', 'opened', 'url'],
+  websearch: ['tool_call', 'searched the web:', 'query'],
+  codesearch: ['tool_call', 'searched code:', 'query'],
+  task: ['tool_call', 'delegated:', 'description'],
+  todowrite: ['tool_call', 'updated the plan', ''],
+  todoread: ['tool_call', 'read the plan', ''],
+  skill: ['tool_call', 'loaded skill', 'name'],
+  question: ['tool_call', 'asked a question', ''],
 };
 
 // Argument names differ between CLIs and versions. Losing the argument over a
 // renamed field would be a pity, so these are tried when the expected one is missing.
-const FALLBACK_KEYS = ['path', 'file_path', 'command', 'query', 'pattern', 'url', 'Url', 'CommandLine'];
+const FALLBACK_KEYS = ['path', 'file_path', 'filePath', 'command', 'query', 'pattern', 'url', 'Url', 'CommandLine'];
 
 /** Kind and human line for one tool call. */
 export function describeTool(

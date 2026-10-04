@@ -3,7 +3,7 @@
  *
  * Runs started by Brainyard are headless, and Claude Code keeps headless
  * sessions out of its `/resume` picker. The sessions a person works in —
- * terminal, IDE, background — live in three stores with three formats:
+ * terminal, IDE, background — live in four stores with four formats:
  *
  * - Claude Code: `~/.claude/projects/<folder>/<session-id>.jsonl`, where the
  *   folder is the working directory with every non-alphanumeric character
@@ -18,6 +18,11 @@
  *   missing. Interactive conversations of agy 1.2 leave the workspace empty
  *   and the history unwritten; their folder is in the CLI's own log,
  *   `log/cli-*.log`, one file per run.
+ * - OpenCode: `~/.local/share/opencode/opencode.db` (SQLite), shared with its
+ *   desktop app: a `session` row per conversation with its folder and title.
+ *   Subagents have a parent; `opencode run` gives its sessions rules that keep
+ *   questions out, the TUI none. Until a title is generated it reads
+ *   `New session - <time>`, and the first prompt says more.
  *
  * None of these is a public API. Every reader skips what it does not
  * understand instead of failing, and a store that is not there is an empty
@@ -78,7 +83,7 @@ export interface SessionInfo {
 export interface SessionsOptions {
   /** The folder whose sessions to list. Defaults to `process.cwd()`. */
   cwd?: string;
-  /** Which CLIs to look at. Defaults to all three. */
+  /** Which CLIs to look at. Defaults to all of them. */
   brains?: ReadonlyArray<BrainId | string>;
   /** Include headless runs (`claude -p`, `codex exec`). Default false: they are not sessions a person returns to. */
   headless?: boolean;
@@ -108,6 +113,11 @@ export function agyHome(): string {
   return join(homedir(), '.gemini', 'antigravity-cli');
 }
 
+/** Where OpenCode keeps its data: `$XDG_DATA_HOME/opencode` or `~/.local/share/opencode`, on macOS too. */
+export function opencodeHome(env: NodeJS.ProcessEnv = process.env): string {
+  return join(env.XDG_DATA_HOME?.trim() || join(homedir(), '.local', 'share'), 'opencode');
+}
+
 /**
  * Claude Code's folder name for a working directory. Names over 200
  * characters get a hash appended that is not reproduced here; those are
@@ -131,6 +141,7 @@ export async function sessions(options: SessionsOptions = {}): Promise<SessionIn
     let list: SessionInfo[];
     if (brain === 'claude') list = claudeSessions(homes.claude ?? claudeHome(env), places);
     else if (brain === 'codex') list = codexSessions(homes.codex ?? codexHome(env), places);
+    else if (brain === 'opencode') list = await opencodeSessions(homes.opencode ?? opencodeHome(env), places);
     else list = await agySessions(homes.antigravity ?? agyHome(), places);
     if (!options.headless) list = list.filter((session) => session.interactive);
     found.push(...newestFirst(list).slice(0, limit));
@@ -144,7 +155,11 @@ export async function sessions(options: SessionsOptions = {}): Promise<SessionIn
       env,
       ...(options.homes ? { homes: options.homes } : {}),
     });
-    found = mergeLive(found, live);
+    // A headless run that is working right now is still not a session to come back to.
+    found = mergeLive(
+      found,
+      live.filter((session) => options.headless || session.interactive),
+    );
   }
   return newestFirst(found);
 }
@@ -154,7 +169,7 @@ export interface LiveOptions {
   cwd?: string;
   /** Include background sessions that have finished (Claude Code). */
   all?: boolean;
-  /** Which CLIs to ask. Defaults to all three. */
+  /** Which CLIs to ask. Defaults to all of them. */
   brains?: ReadonlyArray<BrainId | string>;
   /** Read these stores instead of the defaults (tests). */
   homes?: Partial<Record<BrainId, string>>;
@@ -174,6 +189,9 @@ export interface LiveOptions {
  *   `task_complete`: a turn still open is work in progress; unanswered
  *   requests mean it waits for you. `panes` also checks native approval dialogs.
  * - Antigravity keeps a status per conversation in its summaries database.
+ * - OpenCode writes an answer into its database as it goes and marks it
+ *   completed at the end: an answer still open is work in progress. Waiting
+ *   for a permission is not stored.
  *
  * A CLI that is not installed, or a store that is not there, adds nothing.
  */
@@ -182,16 +200,17 @@ export async function liveSessions(options: LiveOptions = {}): Promise<SessionIn
   const brains = new Set((options.brains ?? BRAIN_IDS).map((brain) => resolveBrain(String(brain))));
   const places = options.cwd ? pathVariants(resolve(options.cwd)) : undefined;
   const homes = options.homes ?? {};
-  const [claude, codex, agy] = await Promise.all([
+  const [claude, codex, agy, opencode] = await Promise.all([
     brains.has('claude') ? claudeLive(options, env) : [],
     brains.has('codex') ? codexLive(homes.codex ?? codexHome(env)) : [],
     brains.has('antigravity') ? agyLive(homes.antigravity ?? agyHome()) : [],
+    brains.has('opencode') ? opencodeLive(homes.opencode ?? opencodeHome(env)) : [],
   ]);
   const codexStates =
     brains.has('codex') && options.panes
       ? await codexPaneStates(codex, { ...options.panes, env: { ...env, ...options.panes.env } })
       : codex;
-  return [...claude, ...codexStates, ...agy].filter(
+  return [...claude, ...codexStates, ...agy, ...opencode].filter(
     (session) => !places || (session.cwd !== undefined && places.has(session.cwd)),
   );
 }
@@ -824,6 +843,113 @@ function agyFromHistory(path: string, places: ReadonlySet<string>): SessionInfo[
   return [...byId.values()];
 }
 
+// ── OpenCode ────────────────────────────────────────────────────────────────
+
+/** What a session is called until OpenCode has generated its title. */
+const OPENCODE_PLACEHOLDER = /^(?:New|Child) session - \d{4}-\d{2}-\d{2}T/;
+
+/** An answer with no write for this long is not being written: the CLI was closed or killed mid-turn. */
+const OPENCODE_STALE_MS = 10 * 60 * 1000;
+
+const OPENCODE_COLUMNS = 'id, directory, title, permission, time_created, time_updated';
+
+async function opencodeSessions(home: string, places: ReadonlySet<string>): Promise<SessionInfo[]> {
+  const folders = [...places];
+  const found = await readOpencode(home, (db) => {
+    const rows = db
+      .prepare(
+        `SELECT ${OPENCODE_COLUMNS} FROM session WHERE parent_id IS NULL AND time_archived IS NULL ` +
+          `AND directory IN (${folders.map(() => '?').join(', ')})`,
+      )
+      .all(...folders);
+    return rows.map((row) => opencodeSession(db, record(row))).filter((session) => session !== undefined);
+  });
+  return found ?? [];
+}
+
+async function opencodeLive(home: string): Promise<SessionInfo[]> {
+  const found = await readOpencode(home, (db) => {
+    const rows = db
+      .prepare(
+        `SELECT ${OPENCODE_COLUMNS}, (SELECT m.data FROM message m WHERE m.session_id = session.id ` +
+          'ORDER BY m.time_created DESC, m.id DESC LIMIT 1) AS last ' +
+          'FROM session WHERE parent_id IS NULL AND time_archived IS NULL AND time_updated > ?',
+      )
+      .all(Date.now() - OPENCODE_STALE_MS);
+    const out: SessionInfo[] = [];
+    for (const row of rows) {
+      const r = record(row);
+      const last = record(parseJson(text(r.last)));
+      // A prompt with no answer yet, or an answer not completed: the agent is at work.
+      const busy = last.role === 'user' || (last.role === 'assistant' && !record(last.time).completed);
+      const session = busy ? opencodeSession(db, r) : undefined;
+      if (session) out.push({ ...session, live: { status: 'busy', kind: 'interactive' } });
+    }
+    return out;
+  });
+  return found ?? [];
+}
+
+function opencodeSession(db: Database, r: Record<string, unknown>): SessionInfo | undefined {
+  const id = text(r.id);
+  if (!id) return undefined;
+  const session: SessionInfo = { brain: 'opencode', id, interactive: !opencodeRun(text(r.permission)) };
+  if (text(r.directory)) session.cwd = text(r.directory);
+  const started = isoFromMs(r.time_created);
+  if (started) session.startedAt = started;
+  const updated = isoFromMs(r.time_updated);
+  if (updated) session.updatedAt = updated;
+  const title = oneLine(text(r.title));
+  if (title && !OPENCODE_PLACEHOLDER.test(title)) {
+    session.title = title.slice(0, 120);
+    session.titleSource = 'generated';
+    return session;
+  }
+  const [first] = db
+    .prepare(
+      'SELECT p.data AS data FROM part p JOIN message m ON m.id = p.message_id ' +
+        "WHERE p.session_id = ? AND json_extract(m.data, '$.role') = 'user' " +
+        "AND json_extract(p.data, '$.type') = 'text' ORDER BY p.time_created, p.id LIMIT 1",
+    )
+    .all(id);
+  const prompt = oneLine(text(record(parseJson(text(record(first).data))).text));
+  if (prompt) {
+    session.title = prompt.slice(0, 120);
+    session.titleSource = 'prompt';
+  }
+  return session;
+}
+
+/** `opencode run` gives its sessions rules that keep questions and plan mode out; the TUI gives none. */
+function opencodeRun(permission: string): boolean {
+  const rules = parseJson(permission);
+  return (
+    Array.isArray(rules) &&
+    rules.some((rule) => record(rule).permission === 'plan_exit' && record(rule).action === 'deny')
+  );
+}
+
+/** Reads OpenCode's database; undefined when it is not there or not readable. */
+async function readOpencode<T>(home: string, read: (db: Database) => T): Promise<T | undefined> {
+  const path = join(home, 'opencode.db');
+  try {
+    statSync(path);
+  } catch {
+    return undefined;
+  }
+  const open = await openSqlite();
+  if (!open) return undefined;
+  let db: Database | undefined;
+  try {
+    db = open(path);
+    return read(db);
+  } catch {
+    return undefined;
+  } finally {
+    db?.close();
+  }
+}
+
 // ── Plumbing ────────────────────────────────────────────────────────────────
 
 /** The folder as given and as the filesystem resolves it: `/tmp` is `/private/tmp` on macOS, and CLIs store either. */
@@ -916,6 +1042,14 @@ function jsonLines(chunk: string, fromMiddle: boolean): Record<string, unknown>[
     }
   }
   return out;
+}
+
+function parseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function record(value: unknown): Record<string, unknown> {

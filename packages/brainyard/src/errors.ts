@@ -95,6 +95,8 @@ const NETWORK: Marker[] = [
   'network error',
   'stream disconnected',
   'timed out',
+  'unable to connect',
+  'cannot connect',
 ];
 
 const RESETS = [/resets?\s+(?:at\s+)?/i, /try again (?:at|in|after)\s+/i, /available again (?:at|in)\s+/i];

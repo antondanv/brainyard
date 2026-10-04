@@ -13,6 +13,7 @@ export const FAKE: Record<BrainId, string[]> = {
   claude: [process.execPath, join(fixtures, 'fake-claude.mjs')],
   codex: [process.execPath, join(fixtures, 'fake-codex.mjs')],
   antigravity: [process.execPath, join(fixtures, 'fake-agy.mjs')],
+  opencode: [process.execPath, join(fixtures, 'fake-opencode.mjs')],
 };
 
 const made: string[] = [];

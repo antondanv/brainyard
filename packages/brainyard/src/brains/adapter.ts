@@ -74,8 +74,12 @@ export interface Adapter {
   plan(launch: Launch): LaunchPlan;
   /** A user message in this CLI's stream-json input format: one line, no newline. */
   message(text: string): string;
-  /** `model`: the one asked for, until the CLI names the one it runs. */
-  parser(cwd: string, model?: string): StreamParser;
+  /**
+   * `model`: the one asked for, until the CLI names the one it runs.
+   * `mcpServers`: the servers given to this run, for CLIs that fold the server
+   * name into the tool name.
+   */
+  parser(cwd: string, model?: string, mcpServers?: readonly string[]): StreamParser;
 }
 
 /** Numbers from untyped JSON, without NaN. */

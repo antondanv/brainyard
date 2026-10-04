@@ -165,6 +165,32 @@ describe.skipIf(!hasTmux)('panes (real tmux)', () => {
     await closePane(started.pane, settings);
   });
 
+  it('OpenCode names its session only after it starts: the pane finds it in its database', async () => {
+    const home = tempDir('brainyard-opencode-home-');
+    const cwd = tempDir();
+    const started = await startPane(
+      {
+        brain: 'opencode',
+        cwd,
+        command: FAKE.opencode,
+        prompt: 'hello',
+        env: { FAKE_PANE: '1', FAKE_OPENCODE_HOME: home, FAKE_SESSION_ID: 'ses_inPane' },
+      },
+      settings,
+    );
+    expect(started.sessionId).toBeUndefined();
+    expect(started.pane).toMatch(/^opencode-/);
+    await until(
+      () => capturePane(started.pane, settings),
+      (s) => Boolean(s && text(s.lines).includes('fake-opencode ready')),
+    );
+    const info = (await listPanes(settings)).find((p) => p.pane === started.pane)!;
+    expect(info.brain).toBe('opencode');
+    const found = await findPaneSession(info, { homes: { opencode: home } });
+    expect(found).toMatchObject({ id: 'ses_inPane', title: 'hello' });
+    await closePane(started.pane, settings);
+  });
+
   it('a server started from inside Claude Code does not pass that session on to panes', () => {
     // An old server remembers the environment of whoever started it.
     const dirty = `${socket}-dirty`;

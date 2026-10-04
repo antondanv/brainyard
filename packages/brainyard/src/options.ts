@@ -14,10 +14,12 @@ import { BrainyardError } from './errors.js';
 import { cliFlags } from './flags.js';
 import { type Command, resolveCommand } from './process.js';
 import type { Access, BrainId, McpServer, RunOptions } from './types.js';
+import { BRAIN_IDS } from './types.js';
 
 const ACCESS: readonly Access[] = ['full', 'workspace', 'readonly'];
 const SERVER_NAME = /^[A-Za-z0-9_-]{1,64}$/;
-const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+// OpenCode's ids have an underscore (`ses_…`); a leading dash would still read as a flag.
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 
 export interface Mode {
   /** `ask`: a one-shot answer — isolated from the project and the user's setup. */
@@ -35,7 +37,7 @@ export interface Resolved {
 /** Brain id from user input; throws on an unknown name. */
 export function resolveBrain(value: string): BrainId {
   if (typeof value !== 'string' || !value.trim()) {
-    throw new BrainyardError('invalid_option', 'choose a brain: claude, codex or antigravity');
+    throw new BrainyardError('invalid_option', `choose a brain: ${BRAIN_IDS.join(', ')}`);
   }
   return brainId(value);
 }

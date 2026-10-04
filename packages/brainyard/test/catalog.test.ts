@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Catalog, parseAgyModels, parseCodexModels, resolvePick } from '../src/catalog.js';
+import { type Catalog, parseAgyModels, parseCodexModels, parseOpencodeModels, resolvePick } from '../src/catalog.js';
 import { BrainyardError } from '../src/errors.js';
 
 const AGY_OUTPUT = [
@@ -97,6 +97,43 @@ const agy: Catalog = {
   fetchedAt: '',
 };
 
+// `opencode models --verbose`, as 1.18 prints it: the name, then the model as JSON.
+const OPENCODE_OUTPUT = [
+  'opencode/big-pickle',
+  JSON.stringify({ id: 'big-pickle', name: 'Big Pickle', variants: {} }, null, 2),
+  'opencode/muse-spark-free',
+  JSON.stringify(
+    {
+      id: 'muse-spark-free',
+      name: 'Muse Spark {free}',
+      options: { note: 'a "quoted" } brace' },
+      variants: { high: {}, minimal: {}, turbo: {}, low: {} },
+    },
+    null,
+    2,
+  ),
+  'sber/GigaChat-3-Pro',
+  JSON.stringify({ id: 'GigaChat-3-Pro', name: 'GigaChat 3 Pro' }, null, 2),
+].join('\n');
+
+describe('parseOpencodeModels', () => {
+  it('reads names, labels and the reasoning variants that are efforts', () => {
+    const models = parseOpencodeModels(OPENCODE_OUTPUT);
+    expect(models.map((m) => [m.id, m.label, m.efforts])).toEqual([
+      ['opencode/big-pickle', 'Big Pickle', []],
+      ['opencode/muse-spark-free', 'Muse Spark {free}', ['minimal', 'low', 'high']],
+      ['sber/GigaChat-3-Pro', 'GigaChat 3 Pro', []],
+    ]);
+  });
+
+  it('reads the plain list too', () => {
+    expect(parseOpencodeModels('opencode/big-pickle\nsber/GigaChat-2\n').map((m) => m.id)).toEqual([
+      'opencode/big-pickle',
+      'sber/GigaChat-2',
+    ]);
+  });
+});
+
 describe('resolvePick', () => {
   it('passes through a valid choice', () => {
     expect(resolvePick(claude, { model: 'opus', effort: 'high' })).toEqual({ model: 'opus', effort: 'high' });
@@ -132,6 +169,27 @@ describe('resolvePick', () => {
 
   it('checks the effort against the whole vocabulary for unknown models', () => {
     expect(() => resolvePick(agy, { model: 'gemini-99', effort: 'max' })).toThrow(/efforts: low, medium, high/);
+  });
+
+  it('refuses a model OpenCode does not run: its list is complete, and it would only say "server error"', () => {
+    const opencode: Catalog = {
+      brain: 'opencode',
+      models: parseOpencodeModels(OPENCODE_OUTPUT),
+      defaultEfforts: ['minimal', 'low', 'high'],
+      source: 'cli',
+      complete: true,
+      fetchedAt: '',
+    };
+    expect(() => resolvePick(opencode, { model: 'sber/GigaChat-9' })).toThrow(
+      /OpenCode has no model "sber\/GigaChat-9"/,
+    );
+    expect(resolvePick(opencode, { model: 'opencode/muse-spark-free', effort: 'low' })).toEqual({
+      model: 'opencode/muse-spark-free',
+      effort: 'low',
+    });
+    expect(() => resolvePick(opencode, { model: 'sber/GigaChat-3-Pro', effort: 'high' })).toThrow(
+      /no configurable effort/,
+    );
   });
 
   it('returns nothing to change when nothing was asked', () => {

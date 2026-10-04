@@ -13,12 +13,16 @@
  *   family with a set of efforts.
  * - **Claude Code** — has no list command, but has aliases it expands to the
  *   latest model (`fable`, `opus`, `sonnet`, `haiku`), which never go stale.
+ * - **OpenCode** — `opencode models --verbose` prints every model of the
+ *   providers you connected, `provider/model`, each followed by its JSON; the
+ *   reasoning levels are its `variants`. It runs nothing outside that list.
  *
  * **Efforts are checked here, not by the CLI**, because Claude Code does not
  * refuse an unknown effort: it prints a warning to stderr and silently runs
  * with its default. You would pay for something you did not choose.
  */
 import { BRAINS } from './brains/info.js';
+import { opencodeDefaultModel } from './brains/opencode.js';
 import { BrainyardError } from './errors.js';
 import { type Command, capture, resolveCommand } from './process.js';
 import type { BrainId, Effort } from './types.js';
@@ -44,6 +48,8 @@ export interface Catalog {
   defaultEfforts: Effort[];
   /** `cli`: asked from the CLI just now. `builtin`: the fallback list shipped with Brainyard. */
   source: 'cli' | 'builtin';
+  /** The CLI runs no model outside this list (OpenCode), so a name missing from it is refused up front. */
+  complete?: boolean;
   note?: string;
   fetchedAt: string;
 }
@@ -171,8 +177,75 @@ export function parseAgyModels(raw: string): ModelInfo[] {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// OpenCode
+// ---------------------------------------------------------------------------
+
+/** `opencode models [--verbose]` → models with the reasoning variants each offers. */
+export function parseOpencodeModels(raw: string): ModelInfo[] {
+  const out: ModelInfo[] = [];
+  const lines = raw.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const id = lines[i]?.trim() ?? '';
+    if (!id.includes('/') || !MODEL_NAME.test(id)) continue;
+    // `--verbose` follows the name with the model as indented JSON.
+    let meta: Record<string, unknown> = {};
+    if (lines[i + 1]?.trim() === '{') {
+      const end = closingLine(lines, i + 1);
+      try {
+        const parsed: unknown = JSON.parse(lines.slice(i + 1, end + 1).join('\n'));
+        if (parsed && typeof parsed === 'object') meta = parsed as Record<string, unknown>;
+      } catch {
+        // The name alone is still a model.
+      }
+      i = end;
+    }
+    const variants = meta.variants && typeof meta.variants === 'object' ? Object.keys(meta.variants) : [];
+    const name = typeof meta.name === 'string' && meta.name.trim() ? meta.name.trim() : id;
+    out.push(model(id, name, sortEfforts(variants.filter(isEffort))));
+  }
+  return out;
+}
+
+/** The line where the JSON object opened at `start` closes; braces inside strings do not count. */
+function closingLine(lines: readonly string[], start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let row = start; row < lines.length; row++) {
+    const line = lines[row] ?? '';
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (inString) {
+        if (char === '\\') i++;
+        else if (char === '"') inString = false;
+      } else if (char === '"') inString = true;
+      else if (char === '{') depth++;
+      else if (char === '}' && --depth === 0) return row;
+    }
+  }
+  return lines.length - 1;
+}
+
+function opencodeCatalog(found: ModelInfo[]): Catalog {
+  // Efforts with no model chosen: the configured default's, or any model offers.
+  const fallback = found.find((entry) => entry.id === opencodeDefaultModel());
+  const efforts = fallback ? fallback.efforts : sortEfforts(found.flatMap((entry) => entry.efforts));
+  return {
+    brain: 'opencode',
+    models: found,
+    defaultEfforts: efforts,
+    source: 'cli',
+    complete: true,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
 function builtin(brain: BrainId, problem: string): Catalog {
   const fetchedAt = new Date().toISOString();
+  if (brain === 'opencode') {
+    // OpenCode's models are the providers you connected; there is nothing to guess.
+    return { brain, models: [], defaultEfforts: [], source: 'builtin', note: `no list: ${problem}`, fetchedAt };
+  }
   if (brain === 'codex') {
     return {
       brain,
@@ -234,6 +307,13 @@ async function discover(brain: BrainId, command: Command | undefined): Promise<C
       return builtin(brain, `\`codex debug models\` did not print a catalog: ${(error as Error).message}`);
     }
   }
+  if (brain === 'opencode') {
+    const { out, problem } = await ask(command, ['models', '--verbose']);
+    if (!out.trim()) return builtin(brain, problem || '`opencode models` named no models: connect a provider');
+    const found = parseOpencodeModels(out);
+    if (found.length > 0) return opencodeCatalog(found);
+    return builtin(brain, '`opencode models` named no models: connect a provider');
+  }
   const { out, problem } = await ask(command, ['models']);
   if (!out) return builtin(brain, problem);
   const models = parseAgyModels(out);
@@ -288,6 +368,15 @@ export function rememberAgyModels(command: Command, raw: string): Catalog | unde
   return catalog;
 }
 
+/** The same for `opencode models --verbose` output. */
+export function rememberOpencodeModels(command: Command, raw: string): Catalog | undefined {
+  const found = parseOpencodeModels(raw);
+  if (found.length === 0) return undefined;
+  const catalog = opencodeCatalog(found);
+  cache.set(cacheKey('opencode', command), { catalog, at: Date.now() });
+  return catalog;
+}
+
 /** Forget cached catalogs (tests, or after installing a CLI). */
 export function clearCatalogCache(): void {
   cache.clear();
@@ -315,7 +404,8 @@ export interface Pick {
  * - A variant name (`gemini-3.8-flash-low`) becomes family + effort.
  * - A model missing from the catalog is not refused: catalogs can be partial
  *   (hidden Codex models, full Claude names instead of aliases), and the CLI
- *   will refuse a wrong name itself — loudly, not by substitution.
+ *   will refuse a wrong name itself — loudly, not by substitution. A complete
+ *   catalog (OpenCode) is the exception.
  */
 export function resolvePick(catalog: Catalog, wanted: { model?: string; effort?: string }): Pick {
   const name = wanted.model?.trim() ?? '';
@@ -351,6 +441,14 @@ export function resolvePick(catalog: Catalog, wanted: { model?: string; effort?:
         );
       }
       return pick(family.id, inner);
+    }
+    if (catalog.complete) {
+      // Asked for a model it does not have, OpenCode answers "Unexpected server error".
+      throw new BrainyardError(
+        'invalid_option',
+        `${label} has no model "${name}"; see \`brainyard models ${catalog.brain}\` for the ones it runs`,
+        { brain: catalog.brain },
+      );
     }
     const known = vocabulary(catalog);
     if (effort && known.length > 0 && !known.includes(effort as Effort)) {

@@ -1,6 +1,6 @@
 /**
- * Brainyard — one API for agentic coding CLIs: Claude Code, Codex and
- * Antigravity.
+ * Brainyard — one API for agentic coding CLIs: Claude Code, Codex,
+ * Antigravity and OpenCode.
  *
  * ```ts
  * import { ask, start, status } from '@antondanv/brainyard';
@@ -24,6 +24,7 @@ export {
   type Pick,
   parseAgyModels,
   parseCodexModels,
+  parseOpencodeModels,
   resolvePick,
 } from './catalog.js';
 export { estimateCost } from './cost.js';
@@ -58,6 +59,7 @@ export {
   type LiveOptions,
   type LiveState,
   liveSessions,
+  opencodeHome,
   type SessionInfo,
   type SessionsOptions,
   type StopSessionOptions,

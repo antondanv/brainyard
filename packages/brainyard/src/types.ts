@@ -1,15 +1,15 @@
 /**
  * Public types. Everything a CLI emits is translated into these shapes: the
- * native event schema of Claude Code, Codex or Antigravity never leaks out.
+ * native event schema of Claude Code, Codex, Antigravity or OpenCode never leaks out.
  */
 
 /** The agentic CLIs Brainyard drives. */
-export type BrainId = 'claude' | 'codex' | 'antigravity';
+export type BrainId = 'claude' | 'codex' | 'antigravity' | 'opencode';
 
 /** Every id Brainyard knows, in display order. */
-export const BRAIN_IDS: readonly BrainId[] = ['claude', 'codex', 'antigravity'];
+export const BRAIN_IDS: readonly BrainId[] = ['claude', 'codex', 'antigravity', 'opencode'];
 
-/** Reasoning effort levels across all three CLIs, from lowest to highest. */
+/** Reasoning effort levels across the CLIs, from lowest to highest. */
 export type Effort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 
 export const EFFORT_ORDER: readonly Effort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
@@ -180,7 +180,7 @@ export interface RunOptions {
   prompt: string;
   /** Working directory of the agent. Defaults to `process.cwd()`. */
   cwd?: string;
-  /** Model id or alias the CLI understands (`sonnet`, `gpt-5.5`, `gemini-3.8-flash`). */
+  /** Model id or alias the CLI understands (`sonnet`, `gpt-5.5`, `gemini-3.8-flash`, `opencode/big-pickle`). */
   model?: string;
   effort?: Effort | string;
   /** Session id from a previous result: continue that conversation. */
@@ -196,7 +196,7 @@ export interface RunOptions {
   env?: Record<string, string>;
   /** Raw arguments appended to the CLI call. You know which CLI you are talking to. */
   extraArgs?: string[];
-  /** Executable to run instead of the default (`claude`, `codex`, `agy`); an array adds leading arguments. */
+  /** Executable to run instead of the default (`claude`, `codex`, `agy`, `opencode`); an array adds leading arguments. */
   command?: string | string[];
   /**
    * Keep the CLI's input open so `hint()` can reach the running agent.

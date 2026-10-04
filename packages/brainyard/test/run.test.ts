@@ -367,6 +367,122 @@ describe('run() with Antigravity', () => {
   });
 });
 
+describe('run() with OpenCode', () => {
+  const base = { brain: 'opencode', prompt: 'x', command: FAKE.opencode } as const;
+
+  it('reads the prompt from stdin and translates the parts of its session', async () => {
+    const cwd = tempDir();
+    const calls = recording();
+    const result = await run({ ...base, prompt: 'fix it', cwd, env: { FAKE_RECORD: calls.path } });
+    expect(result).toMatchObject({
+      ok: true,
+      text: 'All done: fix it',
+      sessionId: 'ses_fakeRun0000000000000001',
+      toolCalls: 3,
+      costUsd: null,
+      costSource: null,
+    });
+    expect(result.usage).toEqual({
+      inputTokens: 3000,
+      outputTokens: 75,
+      reasoningTokens: 15,
+      cacheReadTokens: 900,
+      cacheWriteTokens: 30,
+    });
+    expect(existsSync(join(cwd, 'hello.txt'))).toBe(true);
+    const shown = result.events.filter((e) => e.feed).map((e) => e.summary);
+    expect(shown).toEqual(
+      expect.arrayContaining(['wrote hello.txt', 'ran: echo hi', 'command failed (exit 1): boom', 'All done: fix it']),
+    );
+    expect(result.events.some((e) => e.kind === 'thinking' && !e.feed)).toBe(true);
+    const call = calls.read();
+    expect(call.stdin).toEqual(['fix it']);
+    expect(call.argv).toEqual(expect.arrayContaining(['run', '--title=', '--auto', '--thinking']));
+    expect(JSON.parse(call.env.OPENCODE_CONFIG_CONTENT ?? '{}').experimental).toEqual({ continue_loop_on_deny: true });
+  });
+
+  it('takes the price OpenCode reports, and estimates where it reports none', async () => {
+    const priced = await run({ ...base, cwd: tempDir(), env: { FAKE_COST: '0.01' } });
+    expect(priced.costSource).toBe('cli');
+    expect(priced.costUsd).toBeCloseTo(0.03, 10);
+    const estimated = await run({
+      ...base,
+      cwd: tempDir(),
+      model: 'sber/GigaChat-3-Pro',
+      prices: { 'sber/GigaChat-3-Pro': { input: 1, output: 10 } },
+    });
+    expect(estimated.costSource).toBe('estimate');
+    expect(estimated.costUsd).toBeCloseTo((3000 * 1 + 75 * 10 + 900 * 0.1 + 30 * 1.25) / 1_000_000, 10);
+  });
+
+  it('is not steerable, and says so instead of pretending', async () => {
+    const agent = start({ ...base, cwd: tempDir() });
+    expect(agent.steerable).toBe(false);
+    expect(agent.hint('hello?')).toBe(false);
+    expect((await agent.result).ok).toBe(true);
+  });
+
+  it('continues a session', async () => {
+    const calls = recording();
+    const result = await run({ ...base, resume: 'ses_abc123', cwd: tempDir(), env: { FAKE_RECORD: calls.path } });
+    expect(result.sessionId).toBe('ses_abc123');
+    const argv = calls.read().argv;
+    expect(argv[argv.indexOf('--session') + 1]).toBe('ses_abc123');
+  });
+
+  it('classifies failures; a turn that stops among its tool calls is cut off', async () => {
+    const down = await run({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'fail' } });
+    expect(down).toMatchObject({ ok: false, exitCode: 1, error: { kind: 'network', retryable: true } });
+    const unknown = await run({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'unknown' } });
+    expect(unknown.error?.message).toMatch(/\(OpenCode log: err_8a21f8a7\)$/);
+    const cut = await run({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'cutoff' } });
+    expect(cut).toMatchObject({ ok: false, exitCode: 0, error: { kind: 'failed' } });
+    expect(cut.error?.message).toMatch(/cut off/);
+  });
+
+  it('lets the agent answer after a refused tool, and reports the refusal', async () => {
+    const result = await run({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'denied' } });
+    expect(result).toMatchObject({ ok: true, text: 'I could not write outside the folder.', deniedTools: ['write'] });
+  });
+
+  it('loads MCP servers for the run and names their tools by server', async () => {
+    const result = await run({
+      ...base,
+      cwd: tempDir(),
+      mcpServers: { docs: { command: 'node', args: ['server.js'] } },
+      env: { FAKE_SCENARIO: 'mcp' },
+    });
+    expect(result.text).toBe('marmalade');
+    expect(result.events.map((e) => e.summary)).toContain('called docs: secret_word');
+  });
+
+  it('shows a delegated task and answers with the main session', async () => {
+    const result = await run({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'subagent' } });
+    expect(result.text).toBe('kiwi');
+    expect(result.events.map((e) => e.summary)).toContain('delegated: say kiwi');
+  });
+
+  it('checks model and variant against the models OpenCode runs, before anything starts', async () => {
+    await expect(run({ ...base, cwd: tempDir(), model: 'sber/No-Such' })).rejects.toThrow(
+      /OpenCode has no model "sber\/No-Such"/,
+    );
+    await expect(run({ ...base, cwd: tempDir(), model: 'opencode/big-pickle', effort: 'high' })).rejects.toThrow(
+      /no configurable effort/,
+    );
+    const calls = recording();
+    const result = await run({
+      ...base,
+      cwd: tempDir(),
+      model: 'opencode/muse-free',
+      effort: 'high',
+      env: { FAKE_RECORD: calls.path },
+    });
+    expect(result.ok).toBe(true);
+    const argv = calls.read().argv;
+    expect(argv[argv.indexOf('--variant') + 1]).toBe('high');
+  });
+});
+
 describe('run() refusals before anything starts', () => {
   it('throws for an unknown brain right away', () => {
     expect(() => start({ brain: 'gpt-cli', prompt: 'x' })).toThrow(/unknown brain/);
