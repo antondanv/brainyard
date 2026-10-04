@@ -87,6 +87,24 @@ describe.skipIf(!panesAvailable())('brainyard, the app (real tmux)', () => {
       expect(back).toContain('Enter go in (Ctrl+Q back) · x close');
       expect((await listPanes(settings)).map((info) => info.pane)).toEqual([pane!.pane]);
 
+      // The wall: the pane's live screen in a tile, the pane made the tile's size, typed into in place.
+      await press('2');
+      await until(/╭─ Claude Code/);
+      const tile = await until('fake-claude ready');
+      expect(tile).toContain('i type · Enter full screen');
+      const sized = async () => (await listPanes(settings))[0];
+      const end = Date.now() + 5_000;
+      while ((await sized())?.width !== 108 && Date.now() < end) await sleep(50);
+      expect(await sized()).toMatchObject({ width: 108, height: 29 });
+      await press('i');
+      await until('typing into the tile');
+      await press('yo');
+      await until('got:yo');
+      await press('C-q');
+      await until('←→↑↓ focus');
+      await press('1');
+      await until(`› ${pane!.pane}`);
+
       await press('x');
       await until(`Close ${pane!.pane}?`);
       await press('y');

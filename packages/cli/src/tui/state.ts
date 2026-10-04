@@ -8,12 +8,16 @@ import {
   BRAIN_IDS,
   type BrainId,
   type BrainUsage,
+  type PaneScreen,
   type SessionInfo,
   type SessionUsage,
   type StatusReport,
 } from '@antondanv/brainyard';
 
 import type { PaneRow } from '../panes.js';
+import { DEFAULT_SETTINGS, type Layout, type Page, type Settings } from './settings.js';
+
+export { LAYOUTS, type Layout, PAGES, type Page } from './settings.js';
 
 /** What the runtime reads, each on its own schedule. */
 export type Source = 'status' | 'limits' | 'panes' | 'live' | 'sessions' | 'usage';
@@ -32,6 +36,8 @@ export interface Data {
   sessions?: SessionInfo[];
   /** Tokens and cost of the folder's sessions. */
   usage?: SessionUsage[];
+  /** What the panes on the wall show now, by pane name. */
+  screens?: Record<string, PaneScreen>;
   /** Why a source could not be read, until it can. */
   errors: Partial<Record<Source, string>>;
 }
@@ -42,15 +48,46 @@ export type Effect =
   | { kind: 'refresh' }
   /** Give the pane the whole screen until the person comes back (Ctrl+Q). */
   | { kind: 'attach'; pane: string }
-  /** A new pane, or a saved session continued in one; then attach to it. */
-  | { kind: 'start'; brain: BrainId; cwd: string; resume?: string }
+  /**
+   * A new pane, or a saved session continued in one; then attach to it, or,
+   * from the wall, type into its tile.
+   */
+  | { kind: 'start'; brain: BrainId; cwd: string; resume?: string; after?: 'attach' | 'type' }
   | { kind: 'close'; pane: string }
-  | { kind: 'stop'; brain: BrainId; sessionId: string; cwd: string };
+  | { kind: 'stop'; brain: BrainId; sessionId: string; cwd: string }
+  /** Bytes typed into a tile, as the terminal sent them. */
+  | { kind: 'send'; pane: string; data: string }
+  /** Someone started waiting for the person: the terminal rings. */
+  | { kind: 'bell' }
+  /** The settings changed: keep them for the next start. */
+  | { kind: 'save'; settings: Settings };
 
 export type Dialog =
   | { kind: 'new'; brain: BrainId }
   | { kind: 'confirm'; question: string; effect: Effect }
   | { kind: 'help' };
+
+export interface Wall {
+  /** The pane whose tile has the focus. */
+  focus?: string;
+  layout: Layout;
+  /** The focused tile takes the whole wall. */
+  zoom: boolean;
+  /** Keys go to the focused tile's CLI until Ctrl+Q. */
+  typing: boolean;
+  /** More panes than tiles fit: which screenful of them. */
+  page: number;
+}
+
+/** The sessions page: its own selection, and the text its list is filtered by. */
+export interface SessionList {
+  selected?: string;
+  cursor: number;
+  scroll: number;
+  filter: string;
+  /** Keys go into the filter until Enter or Esc. */
+  editing: boolean;
+}
 
 export interface Note {
   text: string;
@@ -65,6 +102,14 @@ export interface State {
   version: string;
   width: number;
   height: number;
+  page: Page;
+  wall: Wall;
+  list: SessionList;
+  settings: Settings;
+  /** Where they are kept, to show on the settings page. */
+  settingsFile?: string;
+  /** The setting selected on the settings page. */
+  setting: number;
   /** Milliseconds since the epoch: how long ago, how long until a reset. */
   now: number;
   data: Data;
@@ -84,6 +129,11 @@ export interface State {
 
 export type Event =
   | { kind: 'key'; key: string }
+  /** What the terminal sent: keys, or bytes for the tile being typed into. */
+  | { kind: 'input'; data: string }
+  | { kind: 'screens'; screens: Record<string, PaneScreen> }
+  /** A tile to focus: the pane the app has just started from the wall. */
+  | { kind: 'focus'; pane: string; typing?: boolean }
   | { kind: 'resize'; width: number; height: number }
   | { kind: 'tick'; now: number }
   | { kind: 'loaded'; source: Source; data: Partial<Omit<Data, 'errors'>> }
@@ -100,13 +150,20 @@ export function initialState(options: {
   width: number;
   height: number;
   now: number;
+  settings?: Settings;
 }): State {
+  const settings = options.settings ?? DEFAULT_SETTINGS;
   return {
     cwd: options.cwd,
     places: options.places ?? [options.cwd],
     version: options.version,
     width: options.width,
     height: options.height,
+    page: settings.start,
+    wall: { layout: settings.layout, zoom: false, typing: false, page: 0 },
+    list: { cursor: 0, scroll: 0, filter: '', editing: false },
+    settings,
+    setting: 0,
     now: options.now,
     data: { errors: {} },
     cursor: 0,
@@ -215,4 +272,35 @@ export function focus(state: State, list: readonly Item[] = items(state)): { ite
 /** Background sessions are the ones `s` stops: Claude Code's, started with --bg. */
 export function stoppable(session: SessionInfo): boolean {
   return session.brain === 'claude' && session.live?.kind === 'background';
+}
+
+/** The sessions page's list: what runs elsewhere and this folder's sessions, as the filter lets through. */
+export function listItems(state: State): Item[] {
+  const all = sections(state)
+    .filter((section) => section.id === 'running' || section.id === 'sessions')
+    .flatMap((section) => section.items);
+  const words = state.list.filter.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return all;
+  return all.filter((item) => {
+    if (item.kind !== 'session' && item.kind !== 'running') return false;
+    const { session } = item;
+    const text = [session.title, session.id, session.cwd, session.brain, item.kind === 'session' ? item.pane : '']
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
+}
+
+/** The selected session of the sessions page: the remembered one, or its neighbour if it went away. */
+export function listFocus(state: State, list: readonly Item[] = listItems(state)): { item?: Item; index: number } {
+  if (list.length === 0) return { index: 0 };
+  const found = state.list.selected === undefined ? -1 : list.findIndex((item) => item.key === state.list.selected);
+  const index = found >= 0 ? found : Math.min(Math.max(0, state.list.cursor), list.length - 1);
+  return { item: list[index], index };
+}
+
+/** Sessions that wait for the person (a permission, a question), by id: what the header counts and the bell rings for. */
+export function waitingIds(live: readonly SessionInfo[] | undefined): Set<string> {
+  return new Set((live ?? []).filter((session) => session.live?.status === 'waiting').map((session) => session.id));
 }

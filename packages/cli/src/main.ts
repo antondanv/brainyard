@@ -54,7 +54,8 @@ ${out.bold('Usage')}
   brainyard ui                       local dashboard: status, models and a playground
   brainyard serve                    the HTTP API alone, for scripts in any language (no browser)
 
-${out.bold('The app')}  Enter — into the pane (Ctrl+Q — back) · n new pane · x close · s stop · r continue · ? help · q quit
+${out.bold('The app')}  1–5 pages: overview, wall, sessions, usage, settings · Enter — into the pane (Ctrl+Q — back)
+         n new pane · x close · s stop · r continue · on the wall: i type into a tile, z zoom, l layout · ? help · q quit
 
 ${out.bold('Brains')}  claude (Claude Code) · codex (Codex) · antigravity (Antigravity, alias agy) · opencode (OpenCode)
 

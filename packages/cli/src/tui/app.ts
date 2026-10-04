@@ -9,16 +9,20 @@ import {
   type BrainId,
   type BrainUsage,
   BrainyardError,
+  capturePane,
   closePane,
   findPaneSession,
   listPanes,
   liveSessions,
+  type PaneScreen,
   type PaneStart,
   paneMemory,
   panesAvailable,
+  resizePane,
   type SessionInfo,
   type SessionUsage,
   type StatusReport,
+  sendToPane,
   sessions,
   startPane,
   status,
@@ -27,10 +31,12 @@ import {
 } from '@antondanv/brainyard';
 
 import type { PaneRow } from '../panes.js';
-import { palette } from '../term.js';
+import { type Paint, palette } from '../term.js';
+import { type Settings, saveSettings, themeOf } from './settings.js';
 import { type Effect, type Event, initialState, type Source, type State } from './state.js';
 import { update } from './update.js';
-import { render } from './view.js';
+import { bodyHeight, render } from './view.js';
+import { tiles } from './wall.js';
 
 /** Where the app reads and what it changes: the API, or stand-ins in tests. */
 export interface Sources {
@@ -49,6 +55,13 @@ export interface Sources {
   }): Promise<PaneStart>;
   closePane(pane: string): Promise<boolean>;
   stopSession(options: { brain: BrainId; sessionId: string; cwd: string }): Promise<'stopped' | 'not-running'>;
+  /** A tile's screen. */
+  capture(pane: string): Promise<PaneScreen | undefined>;
+  /** A pane made the size of its tile. */
+  resize(pane: string, width: number, height: number): Promise<boolean>;
+  /** Bytes typed into a tile. */
+  send(pane: string, data: string): Promise<void>;
+  saveSettings(settings: Settings): void;
 }
 
 export interface AppHost {
@@ -58,6 +71,8 @@ export interface AppHost {
   attach(pane: string): Promise<void>;
   /** Ctrl+L: whatever is on screen is drawn anew. */
   redraw?(): void;
+  /** Someone started waiting for the person. */
+  bell?(): void;
   quit(): void;
 }
 
@@ -73,6 +88,9 @@ export interface AppOptions {
   /** Milliseconds between reads of each source. */
   every?: Partial<Record<Source, number>>;
   clock?: () => number;
+  settings?: Settings;
+  /** Where the settings are kept, to show on the settings page. */
+  settingsFile?: string;
 }
 
 export interface App {
@@ -103,7 +121,6 @@ const FIRST: readonly Source[] = ['panes', 'sessions', 'status', 'live', 'usage'
 export function startApp(options: AppOptions): App {
   const clock = options.clock ?? Date.now;
   const sources = { ...apiSources(), ...options.sources };
-  const c = palette(options.colour);
   const host = options.host;
   let state = initialState({
     cwd: options.cwd,
@@ -112,7 +129,15 @@ export function startApp(options: AppOptions): App {
     width: options.width,
     height: options.height,
     now: clock(),
+    ...(options.settings ? { settings: options.settings } : {}),
   });
+  if (options.settingsFile) state = { ...state, settingsFile: options.settingsFile };
+  // The theme can change on the settings page: the palette follows it.
+  let painted: { settings: Settings; paint: Paint } | undefined;
+  const paintOf = (settings: Settings) => {
+    if (painted?.settings !== settings) painted = { settings, paint: palette(options.colour, themeOf(settings)) };
+    return painted.paint;
+  };
   let stopped = false;
   let attached = false;
   let drawing = false;
@@ -127,16 +152,60 @@ export function startApp(options: AppOptions): App {
     return promise;
   };
 
-  const frame = () => render({ ...state, now: clock() }, c);
+  const frame = () => render({ ...state, now: clock() }, paintOf(state.settings));
 
   function schedule(): void {
     if (drawing) return;
     drawing = true;
     setImmediate(() => {
       drawing = false;
-      if (!stopped && !attached) host.draw(frame());
+      if (stopped || attached) return;
+      host.draw(frame());
+      fitTiles();
     });
   }
+
+  // The wall: each pane is made the size of its tile, as a compositor sizes its windows.
+  const sized = new Map<string, string>();
+  function fitTiles(): void {
+    if (state.page !== 'wall') return;
+    for (const tile of tiles(state, state.width, bodyHeight(state))) {
+      const width = Math.max(20, tile.width - 2);
+      const height = Math.max(5, tile.height - 2);
+      const size = `${width}x${height}`;
+      // A pane someone has full screen belongs to that terminal's size.
+      if (tile.pane.attached || sized.get(tile.pane.pane) === size) continue;
+      sized.set(tile.pane.pane, size);
+      void track(sources.resize(tile.pane.pane, width, height).catch(() => false));
+    }
+  }
+
+  // The tiles' screens: read often while someone types into one, less when only watched.
+  let capturing = false;
+  let captured = 0;
+  async function captureTiles(): Promise<void> {
+    if (stopped || attached || capturing || state.page !== 'wall' || state.dialog?.kind === 'help') return;
+    const now = clock();
+    if (!state.wall.typing && now - captured < 300) return;
+    capturing = true;
+    captured = now;
+    try {
+      const list = tiles(state, state.width, bodyHeight(state));
+      const screens: Record<string, PaneScreen> = {};
+      await Promise.all(
+        list.map(async (tile) => {
+          const screen = await sources.capture(tile.pane.pane).catch(() => undefined);
+          if (screen) screens[tile.pane.pane] = screen;
+        }),
+      );
+      if (list.length > 0) dispatch({ kind: 'screens', screens });
+    } finally {
+      capturing = false;
+    }
+  }
+
+  // Keys typed into a tile keep their order, one pane after another.
+  let typing: Promise<void> = Promise.resolve();
 
   function dispatch(event: Event): void {
     if (stopped) return;
@@ -223,8 +292,32 @@ export function startApp(options: AppOptions): App {
           dispatch({ kind: 'note', note: { text: started.warnings.join(' · '), tone: 'info' } });
         dispatch({ kind: 'select', key: `pane:${started.pane}` });
         read('panes');
+        // From the wall: a new tile to type into, the wall stays.
+        if (effect.after === 'type') {
+          dispatch({ kind: 'focus', pane: started.pane, typing: true });
+          return;
+        }
         return attach(started.pane);
       }
+      case 'send':
+        typing = typing
+          .then(() => sources.send(effect.pane, effect.data))
+          .catch((error: unknown) => dispatch({ kind: 'note', note: { text: messageOf(error), tone: 'error' } }));
+        await typing;
+        // What was typed shows at once, not at the next look.
+        captured = 0;
+        void track(captureTiles());
+        return;
+      case 'bell':
+        host.bell?.();
+        return;
+      case 'save':
+        try {
+          sources.saveSettings(effect.settings);
+        } catch (error) {
+          dispatch({ kind: 'note', note: { text: `settings not kept: ${messageOf(error)}`, tone: 'error' } });
+        }
+        return;
       case 'close': {
         try {
           const closed = await sources.closePane(effect.pane);
@@ -283,6 +376,7 @@ export function startApp(options: AppOptions): App {
   }
   // How long ago and how long until a reset move on even when nothing is read.
   timers.push(setInterval(() => dispatch({ kind: 'tick', now: clock() }), 15_000));
+  timers.push(setInterval(() => void track(captureTiles()), 100));
 
   return {
     dispatch,
@@ -348,5 +442,9 @@ export function apiSources(): Sources {
     startPane: (options) => startPane(options),
     closePane: (pane) => closePane(pane),
     stopSession: (options) => stopSession(options),
+    capture: (pane) => capturePane(pane),
+    resize: (pane, width, height) => resizePane(pane, width, height),
+    send: (pane, data) => sendToPane(pane, data),
+    saveSettings: (settings) => saveSettings(settings),
   };
 }

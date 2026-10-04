@@ -3,39 +3,31 @@
  * exactly `state.height` rows of exactly `state.width` cells. A terminal
  * writes them as they are; a browser can draw the same rows.
  *
- * Top to bottom: the header, the body (agents with their limits, panes,
- * sessions running elsewhere, this folder's sessions with their usage), which
- * scrolls, then a line for a question or a note and a line of keys.
+ * A header with the pages as tabs; the page's body (the overview scrolls;
+ * the wall, sessions, usage and settings are pages.ts); a line for a
+ * question or a note; a line of keys.
  */
-import {
-  BRAINS,
-  type BrainId,
-  type BrainUsage,
-  clip,
-  type SessionInfo,
-  tidyPaths,
-  type Usage,
-} from '@antondanv/brainyard';
+import { BRAINS, type BrainId, clip, tidyPaths } from '@antondanv/brainyard';
 
 import { ago, bytes, money, shortPath, tokens } from '../format.js';
 import { liveMark, sessionLines } from '../sessions.js';
 import { AVAILABILITY, details } from '../status.js';
 import { type Paint, palette, table } from '../term.js';
 import { poolLines } from '../usage.js';
-import { focus, type Item, type SectionId, type State, sections, stoppable } from './state.js';
+import { type Row, sessionsRows, settingsRows, usageRows, wallPages, wallRows } from './pages.js';
+import { cached, folderName, LABEL_WIDTH, pad, paneState, titleOf, whyNoLimits } from './parts.js';
+import { PAGES, type Page } from './settings.js';
+import { focus, type Item, listFocus, type SectionId, type State, sections, stoppable, waitingIds } from './state.js';
 import { cells, clean, fit } from './text.js';
+import { tiles } from './wall.js';
+
+export type { Row } from './pages.js';
 
 /** Below this the app says so instead of drawing a broken screen. */
 export const MIN_WIDTH = 40;
 export const MIN_HEIGHT = 8;
 /** The header above the body and the two lines below it. */
 const CHROME = 3;
-
-export interface Row {
-  text: string;
-  /** The first row of the selected item: drawn inverted. */
-  selected?: boolean;
-}
 
 export interface Layout {
   rows: Row[];
@@ -84,6 +76,23 @@ export function clampScroll(scroll: number, rows: number, height: number): numbe
   return Math.max(0, Math.min(scroll, rows - height));
 }
 
+/** The body rows of the page on screen, before scrolling. */
+function bodyRows(state: State, c: Paint, room: number): { rows: Row[]; scrolls: boolean } {
+  if (state.dialog?.kind === 'help') return { rows: helpRows(c), scrolls: false };
+  switch (state.page) {
+    case 'overview':
+      return { rows: layout(state, c).rows, scrolls: true };
+    case 'wall':
+      return { rows: wallRows(state, c, state.width, room), scrolls: false };
+    case 'sessions':
+      return { rows: sessionsRows(state, c, state.width, room), scrolls: false };
+    case 'usage':
+      return { rows: usageRows(state, c), scrolls: false };
+    case 'settings':
+      return { rows: settingsRows(state, c), scrolls: false };
+  }
+}
+
 export function render(state: State, c: Paint): string[] {
   const { width, height } = state;
   if (width < MIN_WIDTH || height < MIN_HEIGHT) {
@@ -92,10 +101,9 @@ export function render(state: State, c: Paint): string[] {
     return lines;
   }
   const room = bodyHeight(state);
-  const help = state.dialog?.kind === 'help';
-  const body = help ? helpRows(c) : layout(state, c).rows;
-  const top = help ? 0 : clampScroll(state.scroll, body.length, room);
-  const visible = body.slice(top, top + room);
+  const { rows, scrolls } = bodyRows(state, c, room);
+  const top = scrolls ? clampScroll(state.scroll, rows.length, room) : 0;
+  const visible = rows.slice(top, top + room);
   while (visible.length < room) visible.push({ text: '' });
   return [
     fit(headerText(state, c), width),
@@ -108,18 +116,42 @@ export function render(state: State, c: Paint): string[] {
 // ---------------------------------------------------------------------------
 // header and sections
 // ---------------------------------------------------------------------------
-function folderName(state: State): string {
-  return clean(tidyPaths(state.cwd));
-}
+const TABS: Record<Page, string> = {
+  overview: 'Overview',
+  wall: 'Wall',
+  sessions: 'Sessions',
+  usage: 'Usage',
+  settings: 'Settings',
+};
 
+/** The name, the pages as tabs (digits open them), and on the right who waits and what the panes cost. */
 function headerText(state: State, c: Paint): string {
-  const left = `${c.bold('Brainyard')} ${c.dim(state.version)} ${c.dim('·')} ${folderName(state)}`;
-  const panes = state.data.panes;
-  if (!panes || panes.length === 0) return left;
+  const tab = (page: Page, index: number, short: boolean) => {
+    const name = short && page !== state.page ? `${index + 1}` : `${index + 1} ${TABS[page]}`;
+    return page === state.page ? c.accent(c.bold(`[${name}]`)) : c.dim(` ${name} `);
+  };
+  // A narrow screen names only the open page; the others keep their digits.
+  let left = `${c.bold('Brainyard')} ${c.dim(state.version)}  ${PAGES.map((page, index) => tab(page, index, false)).join(' ')}`;
+  if (cells(left) > state.width - 2)
+    left = `${c.bold('Brainyard')}  ${PAGES.map((page, index) => tab(page, index, true)).join('')}`;
+  const waiting = waitingIds(state.data.live).size;
+  const panes = state.data.panes ?? [];
   const memory = panes.reduce((sum, pane) => sum + (pane.memory ?? 0), 0);
-  const right = c.dim(`${panes.length} pane${panes.length === 1 ? '' : 's'}${memory > 0 ? ` · ${bytes(memory)}` : ''}`);
-  const gap = state.width - cells(left) - cells(right);
-  return gap >= 2 ? `${left}${' '.repeat(gap)}${right}` : left;
+  const count = panes.length > 0 ? `${panes.length} pane${panes.length === 1 ? '' : 's'}` : '';
+  const alert = waiting > 0 ? c.yellow(`⚠ ${waiting} waiting`) : '';
+  // What does not fit goes, the cost of the panes first.
+  const options = [
+    [alert, c.dim([count, memory > 0 ? bytes(memory) : ''].filter(Boolean).join(' · '))],
+    [alert, c.dim(count)],
+    [alert],
+  ];
+  for (const parts of options) {
+    const right = parts.filter((part) => cells(part) > 0).join(c.dim(' · '));
+    const gap = state.width - cells(left) - cells(right);
+    if (!right) return left;
+    if (gap >= 2) return `${left}${' '.repeat(gap)}${right}`;
+  }
+  return left;
 }
 
 function headingText(id: SectionId, list: readonly Item[], state: State, c: Paint): string {
@@ -188,8 +220,6 @@ function sectionRows(id: SectionId, list: readonly Item[], state: State, c: Pain
   }
 }
 
-const LABEL_WIDTH = Math.max(...Object.values(BRAINS).map((brain) => brain.label.length));
-
 function agentRows(brain: BrainId, state: State, c: Paint): string[] {
   const label = BRAINS[brain].label;
   const status = state.data.status?.brains.find((entry) => entry.id === brain);
@@ -209,30 +239,6 @@ function limitRows(brain: BrainId, state: State, c: Paint): string[] {
   return poolLines(found, c, state.now, whyNoLimits).map(clean);
 }
 
-/** The app makes no paid call on its own: Claude Code's windows come from `brainyard usage --live`. */
-function whyNoLimits(brain: BrainUsage): string {
-  if (brain.limitsUnavailable === 'not_requested') {
-    return brain.brain === 'claude' ? 'not checked: brainyard usage --live (one tiny real call)' : 'not checked';
-  }
-  return brain.detail ?? (brain.limits ? 'no windows' : 'unknown');
-}
-
-function pad(text: string, size: number): string {
-  return text + ' '.repeat(Math.max(0, size - cells(text)));
-}
-
-/** What a pane's CLI does: attached, working, waiting for the person, or idle. */
-function paneState(item: Extract<Item, { kind: 'pane' }>, c: Paint): string {
-  if (item.pane.attached) return c.cyan('attached');
-  const live = item.live?.live;
-  if (!live) return '';
-  if (live.status === 'busy') return c.cyan('working');
-  if (live.status === 'waiting')
-    return c.yellow(`waiting${live.waitingFor ? `: ${clip(clean(live.waitingFor), 30)}` : ''}`);
-  if (live.status === 'idle') return c.green('idle');
-  return c.dim(String(live.status));
-}
-
 /** Name, CLI, session, memory, state, how long it has been quiet, folder, label. */
 function paneRows(list: readonly Item[], state: State, c: Paint): string[] {
   const cells = list.flatMap((item) => {
@@ -245,7 +251,7 @@ function paneRows(list: readonly Item[], state: State, c: Paint): string[] {
         pane.brain ? BRAINS[pane.brain].label : c.dim('?'),
         c.dim(pane.sessionId ? pane.sessionId.slice(0, 8) : '—'),
         pane.memory === undefined ? '' : bytes(pane.memory),
-        paneState(item, c),
+        paneState(item.pane.attached, item.live, c),
         quiet === 'now' ? c.green('active') : quiet ? c.dim(`quiet ${quiet}`) : '',
         pane.cwd ? shortPath(clean(tidyPaths(pane.cwd)), 40) : '',
         pane.label ? clip(clean(pane.label), 60) : '',
@@ -253,11 +259,6 @@ function paneRows(list: readonly Item[], state: State, c: Paint): string[] {
     ];
   });
   return table(cells, new Set([3]));
-}
-
-/** Cache reads and writes: most of what Claude Code takes in goes through its cache. */
-function cached(usage: Usage): number {
-  return usage.cacheReadTokens + usage.cacheWriteTokens;
 }
 
 /** CLI, id, age, tokens in, out and through the cache, cost, then the title and what it does now. */
@@ -285,14 +286,6 @@ function folderRows(list: readonly Item[], state: State, c: Paint): string[] {
     ];
   });
   return table(cells, new Set(caching ? [3, 4, 5, 6] : [3, 4, 5]));
-}
-
-function titleOf(session: SessionInfo, c: Paint): string {
-  const tags = [session.background ? 'bg' : '', session.interactive ? '' : 'headless']
-    .filter(Boolean)
-    .map((tag) => c.dim(` ${tag}`))
-    .join('');
-  return `${session.title ? clip(clean(session.title), 60) : c.dim('(untitled)')}${tags}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -324,12 +317,7 @@ export function newChoices(state: State): BrainId[] {
   return known.filter((brain) => brain.availability !== 'not_installed').map((brain) => brain.id);
 }
 
-function keysText(state: State): string {
-  const { dialog } = state;
-  if (dialog?.kind === 'new') return '←→ choose · Enter start · Esc cancel';
-  if (dialog?.kind === 'confirm') return 'y yes · any other key no';
-  if (dialog?.kind === 'help') return 'any key — back';
-  const tail = 'n new · ? help · q quit';
+function overviewKeys(state: State, tail: string): string {
   const item = focus(state).item;
   switch (item?.kind) {
     case 'agent':
@@ -348,22 +336,68 @@ function keysText(state: State): string {
   }
 }
 
+function keysText(state: State): string {
+  const { dialog } = state;
+  if (dialog?.kind === 'new') return '←→ choose · Enter start · Esc cancel';
+  if (dialog?.kind === 'confirm') return 'y yes · any other key no';
+  if (dialog?.kind === 'help') return 'any key — back';
+  const tail = 'n new · ? help · q quit';
+  switch (state.page) {
+    case 'overview':
+      return overviewKeys(state, tail);
+    case 'wall': {
+      if (state.wall.typing) return 'typing into the tile: every key goes to its CLI · Ctrl+Q back';
+      const room = bodyHeight(state);
+      if (tiles(state, state.width, room).length === 0) return tail;
+      const more = wallPages(state, state.width, room);
+      const zoom = state.wall.zoom ? 'z all tiles' : 'z zoom';
+      return `←→↑↓ focus · i type · Enter full screen · ${zoom} · l ${state.wall.layout} · x close${more ? ` · PgDn ${more}` : ''} · ${tail}`;
+    }
+    case 'sessions': {
+      if (state.list.editing) return 'type to filter · Enter keep it · Esc clear it';
+      const item = listFocus(state).item;
+      let act = '';
+      if (item?.kind === 'session' && item.pane) act = 'Enter go in · x close the pane · ';
+      else if (item && (item.kind === 'session' || item.kind === 'running') && item.session.live) {
+        act = stoppable(item.session) ? 's stop · ' : '';
+      } else if (item) act = 'Enter or r continue in a pane · ';
+      return `↑↓ move · ${act}/ filter · ${tail}`;
+    }
+    case 'usage':
+      return tail;
+    case 'settings':
+      return `↑↓ choose · ←→ change, kept at once · ${tail}`;
+  }
+}
+
 const HELP: [keys: string, what: string][] = [
-  ['↑ ↓  j k', 'move; PgUp PgDn, Home End'],
-  ['Tab  Shift+Tab', 'the next or the previous section'],
-  ['Enter', 'into the pane, full screen; Ctrl+Q — back here'],
-  ['', 'on an agent — a new pane of it; on a saved session — continue it'],
-  ['n', 'a new pane in this folder: choose the CLI'],
-  ['x', 'close the pane: its CLI ends, the conversation stays'],
-  ['s', 'stop a Claude Code background session: the conversation stays'],
-  ['r', 'continue a saved session in a new pane'],
+  ['1–5  [ ]', 'pages: overview, wall, sessions, usage, settings'],
+  ['', ''],
+  ['Overview', ''],
+  ['↑ ↓  j k  Tab', 'move · the next section; PgUp PgDn, Home End'],
+  ['Enter', 'into the pane, full screen; Ctrl+Q — back'],
+  ['', 'on an agent — a new pane; on a saved session — continue it'],
+  ['n  x', 'a new pane · close the pane (the conversation stays)'],
+  ['s  r', 'stop a background session · continue a session in a pane'],
+  ['', ''],
+  ['Wall', "the panes' live screens side by side"],
+  ['←→↑↓  Tab', 'the tile in focus'],
+  ['i', 'type into it: every key goes to its CLI until Ctrl+Q'],
+  ['Enter', 'full screen; Ctrl+Q — back to the wall'],
+  ['z  l  PgDn', 'zoom the tile · grid, main and stack, columns · more panes'],
+  ['n  x', "a new tile, ready to type into · close the tile's pane"],
+  ['', ''],
+  ['Sessions', '/ filters; Enter or r continues, s stops, x closes its pane'],
+  ['Settings', '↑↓ choose, ←→ change: theme, accent, layout, bell, first page'],
+  ['', ''],
   ['Ctrl+L', 'read everything again'],
   ['q  Ctrl+C', 'quit: the panes keep running'],
 ];
 
 function helpRows(c: Paint): Row[] {
   const rows: Row[] = [{ text: '' }, { text: c.bold('Keys') }];
-  for (const [keys, what] of HELP) rows.push({ text: `  ${pad(keys, 16)} ${what}` });
+  for (const [keys, what] of HELP)
+    rows.push({ text: what ? `  ${pad(keys, 16)} ${what}` : keys ? `  ${c.bold(keys)}` : '' });
   rows.push(
     { text: '' },
     { text: c.dim('  Panes are CLI sessions in tmux (tmux -L brainyard): they outlive this app and this terminal.') },

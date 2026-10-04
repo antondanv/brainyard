@@ -20,27 +20,54 @@ export interface Paint {
   gray(text: string): string;
   /** Swapped foreground and background: the selected row of the app. */
   inverse(text: string): string;
+  /** The app's own colour: the open tab, the tile in focus. */
+  accent(text: string): string;
 }
+
+/** The colours a theme can change, and the accent. */
+export type Colour = 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'gray' | 'accent';
+
+/**
+ * A theme: SGR codes by colour (`36`, `38;5;45`, `38;2;95;215;255`), `''` for
+ * none, `1` for bold instead of a colour. Missing ones are the terminal's own.
+ */
+export type Theme = Partial<Record<Colour, string>>;
 
 export function paint(stream: NodeJS.WriteStream, force?: boolean): Paint {
   return palette(force ?? colourful(stream));
 }
 
+const CODES: Record<Colour, string> = {
+  red: '31',
+  green: '32',
+  yellow: '33',
+  blue: '34',
+  magenta: '35',
+  cyan: '36',
+  gray: '90',
+  accent: '36',
+};
+
 /** Colours on or off, whatever the output is: the app draws the same frame for a terminal and a browser. */
-export function palette(on: boolean): Paint {
-  const wrap = (open: number, close: number) => (text: string) =>
-    on ? `\u001b[${open}m${text}\u001b[${close}m` : text;
+export function palette(on: boolean, theme: Theme = {}): Paint {
+  const wrap = (open: string, close: number) => (text: string) =>
+    on && open ? `\u001b[${open}m${text}\u001b[${close}m` : text;
+  const colour = (name: Colour) => {
+    const code = theme[name] ?? CODES[name];
+    return wrap(code, code === '1' ? 22 : 39);
+  };
   return {
-    bold: wrap(1, 22),
-    dim: wrap(2, 22),
-    red: wrap(31, 39),
-    green: wrap(32, 39),
-    yellow: wrap(33, 39),
-    blue: wrap(34, 39),
-    magenta: wrap(35, 39),
-    cyan: wrap(36, 39),
-    gray: wrap(90, 39),
-    inverse: wrap(7, 27),
+    bold: wrap('1', 22),
+    dim: wrap('2', 22),
+    red: colour('red'),
+    green: colour('green'),
+    yellow: colour('yellow'),
+    blue: colour('blue'),
+    magenta: colour('magenta'),
+    cyan: colour('cyan'),
+    gray: colour('gray'),
+    inverse: wrap('7', 27),
+    accent: colour('accent'),
   };
 }
 

@@ -28,7 +28,7 @@ describe('the screen', () => {
     const lines = render(state, plain);
     expectScreen(lines, state);
     expect(trimmed(lines)).toEqual([
-      'Brainyard 0.2.0 · /work/app                                                         2 panes · 405 MB',
+      'Brainyard 0.2.0  [1 Overview]  2 Wall   3 Sessions   4 Usage   5 Settings      ⚠ 1 waiting · 2 panes',
       '',
       'Agents',
       '  ● Claude Code  2.1.999   ready         signed in with claude.ai, max as j***@example.com',
@@ -79,7 +79,8 @@ describe('the screen', () => {
     const lines = render(narrow, plain);
     expectScreen(lines, narrow);
     expect(lines.some((line) => line.endsWith('…'))).toBe(true);
-    expect(lines[0]).toMatch(/^Brainyard 0\.2\.0 · \/work\/app +2 panes · 405 MB$/);
+    // A narrow screen names only the open page; the cost of the panes goes first.
+    expect(lines[0]).toMatch(/^Brainyard {2}\[1 Overview\] 2 {2}3 {2}4 {2}5 +⚠ 1 waiting · 2 panes$/);
 
     const tiny = world({ width: 30, height: 5 });
     const shown = render(tiny, plain);
@@ -133,7 +134,8 @@ describe('the screen', () => {
 
     const help = trimmed(render(world({ dialog: { kind: 'help' }, scroll: 9 }), plain));
     expect(help[2]).toBe('Keys');
-    expect(help.join('\n')).toContain('Enter            into the pane, full screen; Ctrl+Q — back here');
+    expect(help.join('\n')).toContain('Enter            into the pane, full screen; Ctrl+Q — back');
+    expect(help.join('\n')).toContain('i                type into it: every key goes to its CLI until Ctrl+Q');
     expect(help.at(-1)).toBe(' any key — back');
   });
 

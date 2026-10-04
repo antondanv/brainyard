@@ -7,12 +7,12 @@ import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 
-import { attachPane } from '@antondanv/brainyard';
+import { attachPane, tidyPaths } from '@antondanv/brainyard';
 
 import { colourful } from '../term.js';
 import { VERSION } from '../version.js';
 import { type App, type Sources, startApp } from './app.js';
-import { parseKeys } from './keys.js';
+import { loadSettings, settingsPath } from './settings.js';
 
 const ENTER = '\u001b[?1049h\u001b[?25l\u001b[?7l\u001b[2J';
 const LEAVE = '\u001b[0m\u001b[?7h\u001b[?25h\u001b[?1049l';
@@ -52,8 +52,10 @@ export async function runApp(options: { cwd?: string; sources?: Partial<Sources>
     process.stderr.write = stderrWrite;
   };
 
+  // Raw: typing into a tile sends the bytes as they came; elsewhere they become keys.
   const onData = (chunk: Buffer) => {
-    for (const key of parseKeys(decoder.write(chunk))) app?.dispatch({ kind: 'key', key });
+    const data = decoder.write(chunk);
+    if (data) app?.dispatch({ kind: 'input', data });
   };
   const onResize = () => {
     shown = [];
@@ -134,12 +136,15 @@ export async function runApp(options: { cwd?: string; sources?: Partial<Sources>
     process.on('unhandledRejection', onCrash);
     output.on('resize', onResize);
     takeOver();
+    const file = settingsPath();
     app = startApp({
       cwd,
       places: placesOf(cwd),
       version: VERSION,
       ...size(),
       colour: colourful(output),
+      settings: loadSettings(file),
+      settingsFile: tidyPaths(file),
       ...(options.sources ? { sources: options.sources } : {}),
       host: {
         draw,
@@ -148,6 +153,7 @@ export async function runApp(options: { cwd?: string; sources?: Partial<Sources>
           shown = [];
           output.write('\u001b[2J');
         },
+        bell: () => output.write('\u0007'),
         quit: () => done(0),
       },
     });

@@ -5,6 +5,9 @@
  */
 import { BRAINS, type BrainId, type SessionInfo } from '@antondanv/brainyard';
 
+import { parseKeys } from './keys.js';
+import { listScroll, SETTINGS, type SettingName, settingValue, settingValues } from './pages.js';
+import { LAYOUTS, type Layout, PAGES, type Page, type Settings } from './settings.js';
 import {
   type Dialog,
   type Effect,
@@ -12,12 +15,17 @@ import {
   focus,
   type Item,
   items,
+  listFocus,
+  listItems,
   type Note,
+  type Source,
   type State,
   sections,
   stoppable,
+  waitingIds,
 } from './state.js';
 import { bodyHeight, clampScroll, layout, newChoices, PLAIN } from './view.js';
+import { focusedTile, neighbour, type Tile, tiles, wallPage } from './wall.js';
 
 type Step = [State, Effect[]];
 
@@ -25,14 +33,14 @@ export function update(state: State, event: Event): Step {
   switch (event.kind) {
     case 'key':
       return onKey(state, event.key);
+    case 'input':
+      return onInput(state, event.data);
     case 'resize':
       return [reveal({ ...state, width: event.width, height: event.height }), []];
     case 'tick':
       return [{ ...state, now: event.now }, []];
-    case 'loaded': {
-      const { [event.source]: _gone, ...errors } = state.data.errors;
-      return [settle({ ...state, data: { ...state.data, ...event.data, errors } }), []];
-    }
+    case 'loaded':
+      return loaded(state, event.source, event.data);
     case 'failed':
       return [
         { ...state, data: { ...state.data, errors: { ...state.data.errors, [event.source]: event.message } } },
@@ -48,7 +56,52 @@ export function update(state: State, event: Event): Step {
       // Not listed yet (a pane just started): selected as soon as it is.
       return [index < 0 ? { ...state, want: event.key } : select(state, list, index), []];
     }
+    case 'screens':
+      return [{ ...state, data: { ...state.data, screens: event.screens } }, []];
+    case 'focus':
+      return [
+        { ...state, page: 'wall', wall: { ...state.wall, focus: event.pane, typing: event.typing === true } },
+        [],
+      ];
   }
+}
+
+function loaded(state: State, source: Source, data: Partial<Omit<State['data'], 'errors'>>): Step {
+  const { [source]: _gone, ...errors } = state.data.errors;
+  let next = settle({ ...state, data: { ...state.data, ...data, errors } });
+  const effects: Effect[] = [];
+  // Someone new waits for the person: ring, once, and not for what was waiting at the start.
+  if (data.live && state.data.live && state.settings.bell) {
+    const before = waitingIds(state.data.live);
+    if ([...waitingIds(data.live)].some((id) => !before.has(id))) effects.push({ kind: 'bell' });
+  }
+  // The pane being typed into has gone.
+  if (data.panes && next.wall.typing && !data.panes.some((pane) => pane.pane === next.wall.focus)) {
+    next = { ...next, wall: { ...next.wall, typing: false } };
+  }
+  return [next, effects];
+}
+
+/** What the terminal sent: bytes for the tile being typed into, the filter being edited, or keys. */
+function onInput(state: State, data: string): Step {
+  if (!state.dialog && state.page === 'wall' && state.wall.typing) {
+    const here = focusedTile(wallTiles(state), state.wall.focus);
+    if (!here) return [{ ...state, wall: { ...state.wall, typing: false } }, []];
+    // Ctrl+Q belongs to the app; everything else, Ctrl+C included, to the CLI.
+    const at = data.indexOf('\u0011');
+    const typed = at < 0 ? data : data.slice(0, at);
+    const effects: Effect[] = typed ? [{ kind: 'send', pane: here.pane.pane, data: typed }] : [];
+    return [at < 0 ? state : { ...state, wall: { ...state.wall, typing: false } }, effects];
+  }
+  if (!state.dialog && state.page === 'sessions' && state.list.editing) return filterInput(state, data);
+  let current = state;
+  const effects: Effect[] = [];
+  for (const key of parseKeys(data)) {
+    const [next, more] = update(current, { kind: 'key', key });
+    current = next;
+    effects.push(...more);
+  }
+  return [current, effects];
 }
 
 /** Optional fields go away rather than stay as undefined: states compare and print cleanly. */
@@ -108,14 +161,49 @@ function select(state: State, list: readonly Item[], index: number): State {
 function onKey(state: State, key: string): Step {
   if (key === 'ctrl-c') return [state, [{ kind: 'quit' }]];
   if (state.dialog) return dialogKey(state, state.dialog, key);
-  const list = items(state);
-  const { item, index } = focus(state, list);
+  if (state.page === 'wall' && state.wall.typing) {
+    return key === 'ctrl-q' ? [{ ...state, wall: { ...state.wall, typing: false } }, []] : [state, []];
+  }
+  if (state.page === 'sessions' && state.list.editing) return filterKey(state, key);
   // A note answers the last key; the next one clears it.
   const s = withOut({ ...state, note: undefined }, 'note');
-  const page = Math.max(1, bodyHeight(state) - 2);
+  const digit = Number(key);
+  if (Number.isInteger(digit) && digit >= 1 && digit <= PAGES.length) return [toPage(s, PAGES[digit - 1]!), []];
+  if (key === '[' || key === ']') {
+    const at = PAGES.indexOf(state.page) + (key === ']' ? 1 : -1);
+    return [toPage(s, PAGES[(at + PAGES.length) % PAGES.length]!), []];
+  }
   switch (key) {
     case 'q':
       return [state, [{ kind: 'quit' }]];
+    case '?':
+      return [{ ...s, dialog: { kind: 'help' } }, []];
+    case 'ctrl-l':
+      return [s, [{ kind: 'refresh' }]];
+  }
+  switch (state.page) {
+    case 'overview':
+      return overviewKey(state, s, key);
+    case 'wall':
+      return wallKey(state, s, key);
+    case 'sessions':
+      return sessionsKey(state, s, key);
+    case 'settings':
+      return settingsKey(state, s, key);
+    case 'usage':
+      return key === 'n' ? openNew(s, undefined) : [state, []];
+  }
+}
+
+function toPage(state: State, page: Page): State {
+  return { ...state, page, wall: { ...state.wall, typing: false } };
+}
+
+function overviewKey(state: State, s: State, key: string): Step {
+  const list = items(state);
+  const { item, index } = focus(state, list);
+  const page = Math.max(1, bodyHeight(state) - 2);
+  switch (key) {
     case 'up':
     case 'k':
       return [select(s, list, index - 1), []];
@@ -145,12 +233,193 @@ function onKey(state: State, key: string): Step {
       return stop(s, item);
     case 'r':
       return resume(s, item);
-    case '?':
-      return [{ ...s, dialog: { kind: 'help' } }, []];
-    case 'ctrl-l':
-      return [s, [{ kind: 'refresh' }]];
     case 'esc':
       return [s, []];
+    default:
+      return [state, []];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// the wall
+// ---------------------------------------------------------------------------
+function wallTiles(state: State): Tile[] {
+  return tiles(state, state.width, bodyHeight(state));
+}
+
+function wallKey(state: State, s: State, key: string): Step {
+  const list = wallTiles(state);
+  const here = focusedTile(list, state.wall.focus);
+  const wall = (change: Partial<State['wall']>): Step => [{ ...s, wall: { ...s.wall, ...change } }, []];
+  switch (key) {
+    case 'left':
+    case 'right':
+    case 'up':
+    case 'down': {
+      const next = here ? neighbour(list, here, key) : undefined;
+      return next ? wall({ focus: next.pane.pane }) : [s, []];
+    }
+    case 'tab':
+    case 'shift-tab': {
+      if (list.length === 0) return [s, []];
+      const at = Math.max(0, list.indexOf(here!)) + (key === 'tab' ? 1 : -1);
+      return wall({ focus: list[(at + list.length) % list.length]!.pane.pane });
+    }
+    case 'enter':
+      return here ? [s, [{ kind: 'attach', pane: here.pane.pane }]] : [s, []];
+    case 'i':
+      return here ? wall({ focus: here.pane.pane, typing: true }) : noted(s, 'no tile to type into: n starts one');
+    case 'z':
+      return here ? wall({ focus: here.pane.pane, zoom: !state.wall.zoom }) : [s, []];
+    case 'l': {
+      const layout = LAYOUTS[(LAYOUTS.indexOf(state.wall.layout) + 1) % LAYOUTS.length]!;
+      const settings: Settings = { ...s.settings, layout };
+      return [{ ...s, settings, wall: { ...s.wall, layout, zoom: false } }, [{ kind: 'save', settings }]];
+    }
+    case 'pagedown':
+    case 'pageup': {
+      const { page, pages } = wallPage(state, state.width, bodyHeight(state));
+      const next = Math.min(pages - 1, Math.max(0, page + (key === 'pagedown' ? 1 : -1)));
+      const { focus: _old, ...rest } = s.wall;
+      return next === page ? [s, []] : [{ ...s, wall: { ...rest, page: next } }, []];
+    }
+    case 'x':
+      return here ? close(s, { key: `pane:${here.pane.pane}`, kind: 'pane', pane: here.pane }) : [s, []];
+    case 'n':
+      return openNew(s, here ? { key: `pane:${here.pane.pane}`, kind: 'pane', pane: here.pane } : undefined);
+    case 'esc':
+      return state.wall.zoom ? wall({ zoom: false }) : [s, []];
+    default:
+      return [state, []];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// the sessions page
+// ---------------------------------------------------------------------------
+function pickListed(state: State, list: readonly Item[], index: number): State {
+  if (list.length === 0) return state;
+  const at = Math.max(0, Math.min(list.length - 1, index));
+  const next = { ...state, list: { ...state.list, selected: list[at]!.key, cursor: at } };
+  return { ...next, list: { ...next.list, scroll: listScroll(next, Math.max(1, bodyHeight(next) - 2)) } };
+}
+
+function sessionsKey(state: State, s: State, key: string): Step {
+  const list = listItems(state);
+  const { item, index } = listFocus(state, list);
+  const page = Math.max(1, bodyHeight(state) - 4);
+  switch (key) {
+    case 'up':
+    case 'k':
+      return [pickListed(s, list, index - 1), []];
+    case 'down':
+    case 'j':
+      return [pickListed(s, list, index + 1), []];
+    case 'pageup':
+      return [pickListed(s, list, index - page), []];
+    case 'pagedown':
+      return [pickListed(s, list, index + page), []];
+    case 'home':
+    case 'g':
+      return [pickListed(s, list, 0), []];
+    case 'end':
+    case 'G':
+      return [pickListed(s, list, list.length - 1), []];
+    case '/':
+      return [{ ...s, list: { ...s.list, editing: true } }, []];
+    case 'esc':
+      return [filtered(s, ''), []];
+    case 'enter':
+      return enter(s, item);
+    case 'r':
+      return resume(s, item);
+    case 's':
+      return stop(s, item);
+    case 'x':
+      return close(s, item);
+    case 'n':
+      return openNew(s, item);
+    default:
+      return [state, []];
+  }
+}
+
+/** A new filter: the list starts from its top again. */
+function filtered(state: State, filter: string, editing = false): State {
+  const { selected: _gone, ...rest } = state.list;
+  return { ...state, list: { ...rest, filter, editing, cursor: 0, scroll: 0 } };
+}
+
+/** Keys while the filter is edited, as tests and named keys give them. */
+function filterKey(state: State, key: string): Step {
+  if (key === 'enter') return [{ ...state, list: { ...state.list, editing: false } }, []];
+  if (key === 'esc') return [filtered(state, ''), []];
+  if (key === 'backspace') return [filtered(state, [...state.list.filter].slice(0, -1).join(''), true), []];
+  if ([...key].length === 1) return [filtered(state, state.list.filter + key, true), []];
+  return [state, []];
+}
+
+/** Text typed into the filter as the terminal sent it: letters of any layout stay what they are. */
+function filterInput(state: State, data: string): Step {
+  let current = state;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: escape sequences are keys, not text.
+  for (const part of data.split(/(\u001b\[[0-9;]*[A-Za-z~]|\u001b|\r|\n|\u007f|\u0008)/)) {
+    if (!part) continue;
+    if (!current.list.editing) break;
+    if (part === '\r' || part === '\n') current = onKey(current, 'enter')[0];
+    else if (part === '\u001b') current = onKey(current, 'esc')[0];
+    else if (part === '\u007f' || part === '\u0008') current = onKey(current, 'backspace')[0];
+    else if (!part.startsWith('\u001b')) {
+      const text = [...part].filter((char) => char >= ' ').join('');
+      if (text) current = filtered(current, current.list.filter + text, true);
+    }
+  }
+  return [current, []];
+}
+
+// ---------------------------------------------------------------------------
+// settings
+// ---------------------------------------------------------------------------
+function withSetting(settings: Settings, name: SettingName, value: string): Settings {
+  switch (name) {
+    case 'bell':
+      return { ...settings, bell: value === 'on' };
+    case 'theme':
+      return { ...settings, theme: value as Settings['theme'] };
+    case 'accent':
+      return { ...settings, accent: value as Settings['accent'] };
+    case 'layout':
+      return { ...settings, layout: value as Layout };
+    case 'start':
+      return { ...settings, start: value as Page };
+  }
+}
+
+function settingsKey(state: State, s: State, key: string): Step {
+  const at = Math.min(Math.max(0, state.setting), SETTINGS.length - 1);
+  switch (key) {
+    case 'up':
+    case 'k':
+      return [{ ...s, setting: Math.max(0, at - 1) }, []];
+    case 'down':
+    case 'j':
+      return [{ ...s, setting: Math.min(SETTINGS.length - 1, at + 1) }, []];
+    case 'left':
+    case 'right':
+    case 'h':
+    case 'l':
+    case 'enter':
+    case ' ': {
+      const name = SETTINGS[at]!;
+      const values = settingValues(name);
+      const step = key === 'left' || key === 'h' ? -1 : 1;
+      const index = values.indexOf(settingValue(state.settings, name));
+      const settings = withSetting(state.settings, name, values[(index + step + values.length) % values.length]!);
+      const wall = name === 'layout' ? { ...s.wall, layout: settings.layout } : s.wall;
+      return [{ ...s, settings, wall }, [{ kind: 'save', settings }]];
+    }
+    case 'n':
+      return openNew(s, undefined);
     default:
       return [state, []];
   }
@@ -196,8 +465,9 @@ function dialogKey(state: State, dialog: Dialog, key: string): Step {
   }
 }
 
+/** From the wall a new pane becomes a tile to type into; elsewhere it takes the screen. */
 function startNew(state: State, brain: BrainId): Effect {
-  return { kind: 'start', brain, cwd: state.cwd };
+  return { kind: 'start', brain, cwd: state.cwd, ...(state.page === 'wall' ? { after: 'type' as const } : {}) };
 }
 
 /** Why panes cannot start, if they cannot. */

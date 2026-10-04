@@ -89,3 +89,25 @@ export function clean(text: string): string {
       .replace(/[\u0000-\u001a\u001c-\u001f\u007f-\u009f]+/g, ' ')
   );
 }
+
+/** The row with one cell inverted: a CLI's cursor, drawn where its terminal would show it. */
+export function invertCell(text: string, x: number): string {
+  let out = '';
+  let column = 0;
+  let placed = false;
+  for (const part of text.split(SGR)) {
+    if (part.startsWith('\u001b[')) {
+      out += part;
+      continue;
+    }
+    for (const { segment } of graphemes.segment(part)) {
+      const size = graphemeCells(segment);
+      if (!placed && size > 0 && column <= x && x < column + size) {
+        out += `\u001b[7m${segment}\u001b[27m`;
+        placed = true;
+      } else out += segment;
+      column += size;
+    }
+  }
+  return placed ? out : `${out}${' '.repeat(Math.max(0, x - column))}\u001b[7m \u001b[27m`;
+}
