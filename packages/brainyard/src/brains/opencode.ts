@@ -1,9 +1,10 @@
 /**
  * OpenCode: `opencode run --format json`.
  *
- * One prompt is the whole run: it goes to stdin (with no message argument,
- * `run` reads it from there) and nothing more can be sent while the agent
- * works. The stream is the session's parts as they finish — `step_start`,
+ * The prompt goes to stdin (with no message argument, `run` reads it from
+ * there). `run` takes nothing more while the agent works, so a run that takes
+ * hints goes through OpenCode's server instead (`opencode-bridge.ts`), which
+ * prints the same stream. The stream is the session's parts as they finish — `step_start`,
  * `text`, `reasoning`, `tool_use`, `step_finish` with tokens and cost — plus
  * `error`. There is no final event: the process exits once the session is
  * idle, and the reason the last step finished says how the turn ended.
@@ -12,9 +13,10 @@
  * the environment (`OPENCODE_PERMISSION`, `OPENCODE_CONFIG_CONTENT`): nothing
  * is written into the project or the user's config.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { clip, describeTool, shortPath, tidyPaths } from '../humanize.js';
 import type { Usage } from '../types.js';
@@ -45,7 +47,8 @@ type Rule = 'allow' | 'deny' | 'ask';
 
 export const opencode: Adapter = {
   id: 'opencode',
-  messageIsTurn: true,
+  // A message sent mid-turn joins the running turn, as with Claude Code.
+  messageIsTurn: false,
 
   plan(launch: Launch): LaunchPlan {
     const warnings: string[] = [];
@@ -138,6 +141,25 @@ export const opencode: Adapter = {
       env.OPENCODE_PERMISSION = JSON.stringify({ ...jsonObject(process.env.OPENCODE_PERMISSION), ...permission });
     }
 
+    // Hints need OpenCode's server: `run` exits before it answers a message
+    // sent mid-turn. Raw arguments belong to `run`, so they keep it.
+    if (launch.steerable && !launch.isolated && launch.extraArgs.length === 0) {
+      const settings = {
+        ...(launch.model ? { model: launch.model } : {}),
+        ...(launch.effort ? { variant: launch.effort } : {}),
+        ...(launch.resume ? { resume: launch.resume } : {}),
+        auto: launch.access === 'full',
+      };
+      return {
+        args: [],
+        prompt,
+        input: 'stream-json',
+        env: { ...env, BRAINYARD_OPENCODE_BRIDGE: JSON.stringify(settings) },
+        warnings,
+        through: [process.execPath, bridgePath()],
+      };
+    }
+
     if (launch.resume) args.push('--session', launch.resume);
     if (launch.model) args.push('--model', launch.model);
     if (launch.effort) args.push('--variant', launch.effort);
@@ -146,7 +168,8 @@ export const opencode: Adapter = {
   },
 
   message(text: string): string {
-    return text;
+    // One line per message for the bridge; `run` reads the prompt as plain text.
+    return JSON.stringify({ type: 'user', text });
   },
 
   forget(sessionId: string): string[] {
@@ -158,6 +181,12 @@ export const opencode: Adapter = {
     return new OpencodeParser(cwd, model ?? opencodeDefaultModel(), mcpServers);
   },
 };
+
+/** The bridge next to this module: compiled in the package, the TypeScript source when run from it. */
+export function bridgePath(): string {
+  const compiled = fileURLToPath(new URL('./opencode-bridge.js', import.meta.url));
+  return existsSync(compiled) ? compiled : fileURLToPath(new URL('./opencode-bridge.ts', import.meta.url));
+}
 
 /**
  * The model OpenCode runs when none is given: `model` from the inline config,

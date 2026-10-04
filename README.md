@@ -48,7 +48,7 @@ behaviour below exists because a real run failed without it ([battle-tested quir
 - **`start()` / `run()`.** An agent in a folder, streaming one closed list of events
   (`message`, `command`, `file_write`, `tool_call`…) with a human-readable line for each.
 - **Steering.** `hint()` sends a message to an agent while it works (Claude Code,
-  Antigravity). `stop()` stops it and everything it started.
+  Antigravity, OpenCode). `stop()` stops it and everything it started.
 - **Sessions.** Every run returns a `sessionId`; pass it as `resume` to continue.
 - **Models and effort.** Asked from each CLI itself and checked before a run: Claude Code
   silently ignores an effort it does not know, so you would pay for something you did not pick.
@@ -263,7 +263,7 @@ not news (a reasoning block, a successful tool result).
 
 | | Claude Code | Codex | Antigravity | OpenCode |
 |---|:-:|:-:|:-:|:-:|
-| Messages while it works (`hint`) | ✓ | — | ✓ | — |
+| Messages while it works (`hint`) | ✓ | — | ✓ | ✓ through its server |
 | Resume a session | ✓ | ✓ | ✓ | ✓ |
 | MCP servers per run | ✓ | ✓ | ✓ | ✓ |
 | Reports dollar cost | ✓ | tokens only | tokens only | ✓ where the provider has prices |

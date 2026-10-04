@@ -200,7 +200,7 @@ export interface RunOptions {
   command?: string | string[];
   /**
    * Keep the CLI's input open so `hint()` can reach the running agent.
-   * Defaults to true where the CLI supports it (Claude Code, Antigravity).
+   * Defaults to true where the CLI supports it (Claude Code, Antigravity, OpenCode).
    */
   steerable?: boolean;
   /** Hard time limit. None by default: a run killed halfway is paid in full and returns nothing. */

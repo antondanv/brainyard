@@ -105,11 +105,27 @@ never runs.
 **Brainyard.** Sends `{"event":"user","message":{"role":"user","content":[{"type":"text","text":…}]}}`.
 Claude Code gets `{"type":"user","message":{…}}`.
 
-### Codex and OpenCode take no input while they work
+### Codex takes no input while it works
 
-`codex exec` and `opencode run` read one prompt and run. `agent.steerable` is `false`, and `hint()` returns
+`codex exec` reads one prompt and runs. `agent.steerable` is `false`, and `hint()` returns
 `false` with a warning event instead of pretending the message arrived. `stop()` still works:
 a process can always be killed.
+
+### OpenCode takes hints only through its server
+
+**Symptom.** `opencode run` reads one prompt. Attached to a server (`run --attach`), a message
+sent mid-turn does reach the agent, but `run` exits as soon as its own prompt is answered, and
+the answer to the message never shows up in its stream.
+
+**Cause.** `run` waits for the prompt it sent, not for the session.
+
+**Brainyard.** A run that takes hints goes through a bridge of its own (`opencode-bridge.ts`):
+it starts `opencode serve` on 127.0.0.1 with a one-off password, creates the session with the
+same rules `run` uses, sends the prompt and every hint with `prompt_async`, answers permission
+questions (`once` with full access, `reject` otherwise), reads the server's event stream and
+prints it the way `opencode run --format json` does. It exits once the session is idle and
+nothing more is coming. A hint joins the running turn, as with Claude Code. One-shot answers,
+runs with `steerable: false` and runs with `extraArgs` keep using `opencode run`.
 
 ## Knowing how it ended
 

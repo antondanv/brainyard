@@ -16,6 +16,8 @@ All notable changes to this project are documented here. The format follows
 - `Catalog.complete`: the CLI runs no model outside its list (OpenCode), so an unknown name is
   refused before the start.
 - `ask()` with OpenCode deletes its session afterwards: OpenCode cannot be told not to keep one.
+- `hint()` reaches a working OpenCode agent: such a run goes through `opencode serve` instead of
+  `opencode run`, which exits before it answers a message sent mid-turn.
 
 ### Changed
 

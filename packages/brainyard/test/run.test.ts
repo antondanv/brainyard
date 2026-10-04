@@ -367,8 +367,8 @@ describe('run() with Antigravity', () => {
   });
 });
 
-describe('run() with OpenCode', () => {
-  const base = { brain: 'opencode', prompt: 'x', command: FAKE.opencode } as const;
+describe('run() with OpenCode, no hints: `opencode run`', () => {
+  const base = { brain: 'opencode', prompt: 'x', command: FAKE.opencode, steerable: false } as const;
 
   it('reads the prompt from stdin and translates the parts of its session', async () => {
     const cwd = tempDir();
@@ -415,13 +415,6 @@ describe('run() with OpenCode', () => {
     });
     expect(estimated.costSource).toBe('estimate');
     expect(estimated.costUsd).toBeCloseTo((3000 * 1 + 75 * 10 + 900 * 0.1 + 30 * 1.25) / 1_000_000, 10);
-  });
-
-  it('is not steerable, and says so instead of pretending', async () => {
-    const agent = start({ ...base, cwd: tempDir() });
-    expect(agent.steerable).toBe(false);
-    expect(agent.hint('hello?')).toBe(false);
-    expect((await agent.result).ok).toBe(true);
   });
 
   it('continues a session', async () => {
@@ -482,6 +475,95 @@ describe('run() with OpenCode', () => {
     expect(result.ok).toBe(true);
     const argv = calls.read().argv;
     expect(argv[argv.indexOf('--variant') + 1]).toBe('high');
+  });
+});
+
+describe('run() with OpenCode through its server: hints reach it', () => {
+  const base = { brain: 'opencode', prompt: 'x', command: FAKE.opencode } as const;
+  type Http = { method: string; path: string; body?: Record<string, unknown> };
+  const served = (calls: ReturnType<typeof recording>) =>
+    calls.read() as ReturnType<typeof calls.read> & { http: Http[] };
+
+  it('runs the turn through opencode serve and reads it as `run` prints it', async () => {
+    const cwd = tempDir();
+    const calls = recording();
+    const result = await run({
+      ...base,
+      prompt: 'fix it',
+      cwd,
+      model: 'opencode/muse-free',
+      effort: 'high',
+      env: { FAKE_RECORD: calls.path },
+    });
+    expect(result).toMatchObject({ ok: true, text: 'All done: fix it', sessionId: 'ses_fakeServe00000000000001' });
+    expect(result.toolCalls).toBe(3);
+    expect(result.usage.inputTokens).toBe(3000);
+    expect(existsSync(join(cwd, 'hello.txt'))).toBe(true);
+    const shown = result.events.filter((e) => e.feed).map((e) => e.summary);
+    // A tool reported running and then done is one line; the prompt itself is not an answer.
+    expect(shown.filter((line) => line === 'ran: echo hi')).toHaveLength(1);
+    expect(shown).not.toContain('fix it');
+    const call = served(calls);
+    expect(call.argv).toEqual(['serve', '--port', '0', '--hostname', '127.0.0.1']);
+    expect(call.env.PWD).toBe(cwd);
+    expect(JSON.parse(call.env.OPENCODE_CONFIG_CONTENT ?? '{}').experimental).toEqual({ continue_loop_on_deny: true });
+    expect(call.http.find((h) => h.path === '/session')?.body).toMatchObject({
+      title: 'fix it',
+      permission: expect.arrayContaining([{ permission: 'plan_exit', pattern: '*', action: 'deny' }]),
+    });
+    expect(call.http.find((h) => h.path.endsWith('/prompt_async'))?.body).toEqual({
+      parts: [{ type: 'text', text: 'fix it' }],
+      model: { providerID: 'opencode', modelID: 'muse-free' },
+      variant: 'high',
+    });
+  });
+
+  it('delivers a hint into the running turn', async () => {
+    const agent = start({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'hint' } });
+    expect(agent.steerable).toBe(true);
+    for await (const event of agent) if (event.kind === 'command') agent.hint('use vitest');
+    expect(await agent.result).toMatchObject({ ok: true, text: 'heard: use vitest', hints: ['use vitest'] });
+  });
+
+  it("answers OpenCode's questions: yes with full access, no otherwise", async () => {
+    const full = await run({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'permission' } });
+    expect(full).toMatchObject({ ok: true, text: 'written', deniedTools: [] });
+    const workspace = await run({ ...base, cwd: tempDir(), access: 'workspace', env: { FAKE_SCENARIO: 'permission' } });
+    expect(workspace).toMatchObject({ ok: true, text: 'refused', deniedTools: ['write'] });
+  });
+
+  it('reports a failed turn; a turn that stops among its tool calls is cut off', async () => {
+    const down = await run({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'fail' } });
+    expect(down).toMatchObject({ ok: false, exitCode: 1, error: { kind: 'network', retryable: true } });
+    const cut = await run({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'cutoff' } });
+    expect(cut).toMatchObject({ ok: false, error: { kind: 'failed' } });
+    expect(cut.error?.message).toMatch(/cut off/);
+  });
+
+  it('continues a session instead of creating one', async () => {
+    const calls = recording();
+    const result = await run({ ...base, resume: 'ses_abc123', cwd: tempDir(), env: { FAKE_RECORD: calls.path } });
+    expect(result.sessionId).toBe('ses_abc123');
+    const http = served(calls).http;
+    expect(http.some((h) => h.path === '/session')).toBe(false);
+    expect(http.some((h) => h.path === '/session/ses_abc123/prompt_async')).toBe(true);
+  });
+
+  it('loads MCP servers given per run', async () => {
+    const result = await run({
+      ...base,
+      cwd: tempDir(),
+      mcpServers: { docs: { command: 'node', args: ['server.js'] } },
+      env: { FAKE_SCENARIO: 'mcp' },
+    });
+    expect(result.text).toBe('marmalade');
+    expect(result.events.map((e) => e.summary)).toContain('called docs: secret_word');
+  });
+
+  it('stops the agent together with its server', async () => {
+    const agent = start({ ...base, cwd: tempDir(), env: { FAKE_SCENARIO: 'hang' } });
+    for await (const event of agent) if (event.kind === 'message') agent.stop('enough');
+    expect(await agent.result).toMatchObject({ stopped: true, error: { kind: 'stopped' } });
   });
 });
 

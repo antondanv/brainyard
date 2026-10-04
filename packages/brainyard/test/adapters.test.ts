@@ -7,7 +7,7 @@ import type { Launch } from '../src/brains/adapter.js';
 import { antigravity, PRINT_TIMEOUT } from '../src/brains/antigravity.js';
 import { ANSWER_SYSTEM, claude, WORKSPACE_SETTINGS } from '../src/brains/claude.js';
 import { codex, toml, unwrap } from '../src/brains/codex.js';
-import { ANSWER_AGENT, opencode, opencodeDefaultModel, parseJsonc } from '../src/brains/opencode.js';
+import { ANSWER_AGENT, bridgePath, opencode, opencodeDefaultModel, parseJsonc } from '../src/brains/opencode.js';
 import { tempDir } from './helpers.js';
 
 const TRICKY = '--- front matter\nprompt that starts with a dash';
@@ -255,8 +255,9 @@ describe('antigravity', () => {
 describe('opencode', () => {
   const env = (plan: { env: Record<string, string> }, name: string) => JSON.parse(plan.env[name] ?? '{}');
   // A provider of its own; OpenCode Zen's models get tools refused instead of taken away (below).
+  // `opencode run`: no hints. A run that takes them goes through the server bridge (below).
   const oc = (overrides: Partial<Launch> = {}) =>
-    launch({ brain: 'opencode', model: 'sber/GigaChat-3-Pro', ...overrides });
+    launch({ brain: 'opencode', model: 'sber/GigaChat-3-Pro', steerable: false, ...overrides });
 
   it('runs one prompt from stdin, titled after it instead of a generated title', () => {
     const plan = opencode.plan(oc());
@@ -348,6 +349,24 @@ describe('opencode', () => {
     // `--auto` would approve a question: with full access a switch still takes the tool away.
     const full = opencode.plan(oc({ model: 'opencode/big-pickle', shell: false }));
     expect(env(full, 'OPENCODE_PERMISSION')).toEqual({ bash: 'deny' });
+  });
+
+  it('takes hints through its server: the bridge runs in place of `opencode run`', () => {
+    const plan = opencode.plan(oc({ steerable: true, effort: 'high', resume: 'ses_abc', access: 'workspace' }));
+    expect(plan.through).toEqual([process.execPath, bridgePath()]);
+    expect(plan).toMatchObject({ args: [], input: 'stream-json', prompt: TRICKY });
+    expect(env(plan, 'BRAINYARD_OPENCODE_BRIDGE')).toEqual({
+      model: 'sber/GigaChat-3-Pro',
+      variant: 'high',
+      resume: 'ses_abc',
+      auto: false,
+    });
+    // Permissions and inline config still go in through the environment.
+    expect(env(plan, 'OPENCODE_PERMISSION')).toMatchObject({ external_directory: 'deny' });
+    expect(JSON.parse(opencode.message('hi'))).toEqual({ type: 'user', text: 'hi' });
+    // An answer has nothing to steer, and raw arguments belong to `run`.
+    expect(opencode.plan(oc({ steerable: true, isolated: true, access: 'readonly' })).through).toBeUndefined();
+    expect(opencode.plan(oc({ steerable: true, extraArgs: ['--pure'] })).through).toBeUndefined();
   });
 
   it("keeps what the caller's environment already sets, under its own settings", () => {

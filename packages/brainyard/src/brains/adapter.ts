@@ -37,6 +37,11 @@ export interface LaunchPlan {
   warnings: string[];
   /** Removes what the adapter created for this run. */
   cleanup?: () => void;
+  /**
+   * Start the CLI through this program: the process is
+   * `[...through, cli, ...cli's leading arguments, ...args]`.
+   */
+  through?: string[];
 }
 
 /** An event before the runner stamps it with a number, a time and the brain. */

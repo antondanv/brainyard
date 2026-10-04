@@ -39,7 +39,7 @@ export interface AgentRun extends AsyncIterable<AgentEvent> {
    * never started: bad options or the CLI is not installed.
    */
   readonly result: Promise<RunResult>;
-  /** Whether `hint()` can reach this run (Claude Code, Antigravity). */
+  /** Whether `hint()` can reach this run (Claude Code, Antigravity, OpenCode). */
   readonly steerable: boolean;
   /** Known once the CLI has started. */
   readonly sessionId: string | undefined;
@@ -177,7 +177,15 @@ class Run implements AgentRun {
 
     let child: ChildProcess;
     try {
-      child = spawnCommand(resolved.command, plan.args, {
+      // An adapter may drive its CLI through a program of its own (OpenCode's server bridge).
+      const command = plan.through?.length
+        ? {
+            file: plan.through[0] as string,
+            args: [...plan.through.slice(1), resolved.command.file, ...resolved.command.args],
+            shell: false,
+          }
+        : resolved.command;
+      child = spawnCommand(command, plan.args, {
         cwd: launch.cwd,
         env: { ...process.env, ...plan.env, ...(this.#options.env ?? {}) },
         stdin: 'pipe',

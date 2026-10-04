@@ -107,7 +107,7 @@ export const BRAINS: Record<BrainId, BrainInfo> = {
     login: 'run `opencode auth login` and connect a provider (or set its API key)',
     homepage: 'https://opencode.ai',
     capabilities: {
-      steering: false,
+      steering: true,
       resume: true,
       mcp: true,
       reportsCost: true,
