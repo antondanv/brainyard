@@ -83,7 +83,6 @@ export {
   type BrainUsage,
   type ModelUsage,
   type SessionUsage,
-  type UsageBrainId,
   type UsageOptions,
   type UsageReport,
   usage,

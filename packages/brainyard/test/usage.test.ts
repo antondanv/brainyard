@@ -152,6 +152,54 @@ describe('saved usage', () => {
     expect(report.brains[0]?.limits?.find((w) => w.limitId === 'codex')?.utilization).toBe(0.12);
   });
 
+  it('refreshes cached Codex counters and limits after append and replacement', async () => {
+    const cwd = folder(),
+      home = tempDir();
+    const path = codexStore(home, cwd, 'changing', [
+      { type: 'turn_context', payload: { model: 'a' } },
+      codexTokens(),
+      codexLimits('2026-10-04T10:00:00Z', 10),
+    ]);
+    const options = { cwd, brains: ['codex'], homes: { codex: home } };
+    const first = await usage(options);
+    first.brains[0]!.limits![0]!.utilization = 99;
+    first.sessions[0]!.usage!.inputTokens = 99;
+    expect((await usage(options)).brains[0]?.limits?.[0]?.utilization).toBe(0.1);
+    expect((await usage(options)).sessions[0]?.usage?.inputTokens).toBe(60);
+    appendFileSync(
+      path,
+      `${JSON.stringify(codexTokens(200, 40, 80))}\n${JSON.stringify(codexLimits('2026-10-04T12:00:00Z', 20))}\n`,
+    );
+    expect((await usage(options)).sessions[0]?.usage?.inputTokens).toBe(120);
+    expect((await usage({ ...options, limit: 0 })).brains[0]?.limits?.[0]?.utilization).toBe(0.2);
+    codexStore(home, cwd, 'changing', [codexTokens(50, 10, 20)]);
+    const replaced = await usage(options);
+    expect(replaced.sessions[0]?.usage?.inputTokens).toBe(30);
+    expect(replaced.brains[0]?.limits).toBeNull();
+  });
+
+  it('keeps corrected Codex totals and refuses a cost with unknown historical models', async () => {
+    const cwd = folder(),
+      home = tempDir();
+    codexStore(home, cwd, 'corrected', [
+      { type: 'turn_context', payload: { model: 'a' } },
+      codexTokens(200, 40, 80),
+      codexTokens(100, 20, 40),
+    ]);
+    const report = await usage({ cwd, brains: ['codex'], homes: { codex: home }, prices });
+    expect(report.sessions[0]).toMatchObject({ costUsd: null, usage: { inputTokens: 60, outputTokens: 20 } });
+    expect(report.sessions[0]?.byModel[0]?.model).toBeNull();
+  });
+
+  it('selects a specific older session before applying the listing limit', async () => {
+    const cwd = folder(),
+      home = tempDir();
+    claudeStore(home, cwd, 'older', [claudeMessage('m', 'a')]);
+    claudeStore(home, cwd, 'newer', [claudeMessage('m', 'b')]);
+    const report = await usage({ cwd, brains: ['claude'], homes: { claude: home }, sessionId: 'older', limit: 1 });
+    expect(report.sessions.map((session) => session.id)).toEqual(['older']);
+  });
+
   it('reads Antigravity generation metadata, including model changes, cache and reasoning', async () => {
     const cwd = folder(),
       home = tempDir();
@@ -206,6 +254,30 @@ describe('saved usage', () => {
     });
   });
 
+  it('reads retained OpenCode session totals when no assistant counters remain', async () => {
+    const cwd = folder(),
+      home = tempDir();
+    const db = new DatabaseSync(opencodeStore(home, cwd, [], 0.04));
+    for (const [column, count] of Object.entries({
+      tokens_input: 100,
+      tokens_output: 20,
+      tokens_reasoning: 5,
+      tokens_cache_read: 40,
+      tokens_cache_write: 10,
+    })) {
+      db.exec(`ALTER TABLE session ADD COLUMN ${column} integer`);
+      db.prepare(`UPDATE session SET ${column} = ?`).run(count);
+    }
+    db.close();
+    const report = await usage({ cwd, brains: ['opencode'], homes: { opencode: home } });
+    expect(report.sessions[0]).toMatchObject({
+      costUsd: 0.04,
+      costSource: 'cli',
+      usage: { inputTokens: 100, outputTokens: 25, cacheReadTokens: 40, cacheWriteTokens: 10, reasoningTokens: 5 },
+    });
+    expect(report.sessions[0]?.byModel[0]?.model).toBeNull();
+  });
+
   it('filters headless sessions, subagents, session ids and archived OpenCode sessions', async () => {
     const cwd = folder(),
       home = tempDir();
@@ -213,6 +285,9 @@ describe('saved usage', () => {
     const db = new DatabaseSync(path);
     db.exec(
       `INSERT INTO session SELECT 'child', directory, 'ses_test', NULL, 'child', time_created, time_updated, NULL, 0 FROM session WHERE id='ses_test'`,
+    );
+    db.exec(
+      `INSERT INTO session SELECT 'archived', directory, NULL, NULL, 'archived', time_created, time_updated, time_updated, 0 FROM session WHERE id='ses_test'`,
     );
     db.prepare('UPDATE session SET permission=? WHERE id=?').run(
       JSON.stringify([{ permission: 'plan_exit', action: 'deny' }]),

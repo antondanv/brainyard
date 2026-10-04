@@ -1,6 +1,7 @@
 /** Subscription snapshots and usage of saved conversations; live checks are explicitly requested. */
+import { statSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
 import { obj, str } from './brains/adapter.js';
@@ -15,6 +16,7 @@ import {
   claudeSessionFiles,
   codexHome,
   type Database,
+  opencodeHome,
   openSqlite,
   pathVariants,
   rolloutFiles,
@@ -34,26 +36,23 @@ import {
   type UsageSample,
 } from './usage-readers.js';
 
-/** Store support is independent of whether its CLI adapter is installed. */
-export type UsageBrainId = BrainId | 'opencode';
-
 export interface UsageOptions {
   /** Sessions of this folder. Defaults to process.cwd(). Limits apply to the whole account. */
   cwd?: string;
   /** Defaults to all supported stores, including OpenCode. */
-  brains?: readonly (UsageBrainId | string)[];
+  brains?: readonly (BrainId | string)[];
   /** Only this saved session in the selected folder. */
   sessionId?: string;
   /** Include headless runs. Defaults to false, as in sessions(). */
   headless?: boolean;
   /** Maximum sessions per CLI, newest first. Defaults to 200; 0 reads only limits. */
   limit?: number;
-  homes?: Partial<Record<UsageBrainId, string>>;
+  homes?: Partial<Record<BrainId, string>>;
   /** Estimate dollars per model, using the same prices as run()/ask(). */
   prices?: Record<string, ModelPrice>;
   /** One minimal Claude call to read rate_limit_event. Defaults to false; can incur a charge. */
   live?: boolean;
-  commands?: Partial<Record<UsageBrainId, string | string[]>>;
+  commands?: Partial<Record<BrainId, string | string[]>>;
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -67,8 +66,7 @@ export interface ModelUsage {
   costSource: 'cli' | 'estimate' | null;
 }
 
-export interface SessionUsage extends Omit<SessionInfo, 'brain'> {
-  brain: UsageBrainId;
+export interface SessionUsage extends SessionInfo {
   /** Null means there were no readable counters; zero counters are still known usage. */
   usage: Usage | null;
   /** Null if any usage could not be priced; a partial sum is not the session cost. */
@@ -80,7 +78,7 @@ export interface SessionUsage extends Omit<SessionInfo, 'brain'> {
 }
 
 export interface BrainUsage {
-  brain: UsageBrainId;
+  brain: BrainId;
   /** Null means unavailable, not 0% used. */
   limits: LimitWindow[] | null;
   limitsSource: 'rollout' | 'live' | null;
@@ -98,17 +96,9 @@ export interface UsageReport {
   checkedAt: string;
 }
 
-const STORES: readonly UsageBrainId[] = [...BRAIN_IDS, 'opencode'];
-
 /** Saved session tokens and account limit snapshots. Makes no inference call unless live is true. */
 export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
-  const brains = [
-    ...new Set(
-      (options.brains ?? STORES).map((name) =>
-        name.trim().toLowerCase() === 'opencode' ? ('opencode' as const) : brainId(name),
-      ),
-    ),
-  ];
+  const brains = [...new Set((options.brains ?? BRAIN_IDS).map(brainId))];
   const limit = options.limit ?? 200;
   if (!Number.isInteger(limit) || limit < 0)
     throw new BrainyardError('invalid_option', 'usage limit must be a nonnegative integer');
@@ -118,17 +108,6 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
   const report: UsageReport = { brains: [], sessions: [], checkedAt: new Date().toISOString() };
   for (const brain of brains) {
     const home = options.homes?.[brain] ?? storeHome(brain, env);
-    if (brain === 'opencode') {
-      report.brains.push(
-        unavailable(
-          brain,
-          'unsupported',
-          'OpenCode does not persist subscription windows; limits depend on the provider.',
-        ),
-      );
-      report.sessions.push(...(await opencodeSessions(home, places, options)));
-      continue;
-    }
     const list = await sessions({
       cwd,
       brains: [brain],
@@ -139,7 +118,16 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
       env,
     });
     const selected = list.filter((session) => !options.sessionId || session.id === options.sessionId);
-    if (brain === 'claude') {
+    if (brain === 'opencode') {
+      report.brains.push(
+        unavailable(
+          brain,
+          'unsupported',
+          'OpenCode does not persist subscription windows; limits depend on the provider.',
+        ),
+      );
+      report.sessions.push(...(await opencodeSessions(home, selected, options.prices)));
+    } else if (brain === 'claude') {
       const files = new Map(claudeSessionFiles(home, places).map((path) => [basename(path, '.jsonl'), path]));
       for (const session of selected) {
         const samples = await claudeSamples(files.get(session.id));
@@ -151,23 +139,27 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
           : unavailable(brain, 'not_requested', 'Claude subscription windows require live: true.'),
       );
     } else if (brain === 'codex') {
-      const snapshots = new Map<string, { at: string; windows: LimitWindow[] }>();
+      const snapshots = new Map<string, LimitSnapshot>();
       const files = rolloutFiles(join(home, 'sessions'));
       const wanted = new Map(selected.map((session) => [session.id, session]));
       for (const path of files) {
-        const saved = await codexSamples(path, snapshots);
+        const saved = await codexSamples(path);
+        for (const [id, snapshot] of saved.snapshots) {
+          if (!snapshots.has(id) || snapshots.get(id)!.at <= snapshot.at) snapshots.set(id, snapshot);
+        }
         const session = wanted.get(saved.id);
         if (session) {
           wanted.delete(saved.id);
           report.sessions.push(summarize(session, saved.samples, 'rollout', options.prices));
         }
       }
+      for (const session of wanted.values()) report.sessions.push(summarize(session, [], 'rollout', options.prices));
       const latest = [...snapshots.values()].sort((a, b) => b.at.localeCompare(a.at));
       report.brains.push(
         latest.length
           ? {
               brain,
-              limits: latest.flatMap((snapshot) => snapshot.windows),
+              limits: latest.flatMap((snapshot) => snapshot.windows.map((window) => ({ ...window }))),
               limitsSource: 'rollout',
               limitsObservedAt: latest[0]!.at,
               limitsUnavailable: null,
@@ -213,14 +205,14 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
   return report;
 }
 
-function storeHome(brain: UsageBrainId, env: NodeJS.ProcessEnv): string {
+function storeHome(brain: BrainId, env: NodeJS.ProcessEnv): string {
   if (brain === 'claude') return claudeHome(env);
   if (brain === 'codex') return codexHome(env);
-  if (brain === 'opencode') return join(env.XDG_DATA_HOME?.trim() || join(homedir(), '.local', 'share'), 'opencode');
+  if (brain === 'opencode') return opencodeHome(env);
   return agyHome();
 }
 
-function unavailable(brain: UsageBrainId, reason: BrainUsage['limitsUnavailable'], detail: string): BrainUsage {
+function unavailable(brain: BrainId, reason: BrainUsage['limitsUnavailable'], detail: string): BrainUsage {
   return { brain, limits: null, limitsSource: null, limitsObservedAt: null, limitsUnavailable: reason, detail };
 }
 
@@ -237,15 +229,51 @@ async function claudeSamples(path: string | undefined): Promise<UsageSample[]> {
   return [...byId.values()];
 }
 
-async function codexSamples(
-  path: string,
-  snapshots: Map<string, { at: string; windows: LimitWindow[] }>,
-): Promise<{ id: string; samples: UsageSample[] }> {
+interface LimitSnapshot {
+  at: string;
+  windows: LimitWindow[];
+}
+
+interface CodexSaved {
+  id: string;
+  samples: UsageSample[];
+  snapshots: Map<string, LimitSnapshot>;
+}
+
+// Account limits require all rollouts; dashboards should not reread an unchanged archive.
+const codexCache = new Map<string, { stamp: string; saved: Promise<CodexSaved> }>();
+const CODEX_CACHE_SIZE = 512;
+const CODEX_RECORDS = /"type"\s*:\s*"(?:session_meta|turn_context|token_count)"/;
+
+function codexSamples(path: string): Promise<CodexSaved> {
+  let stamp: string;
+  try {
+    const stat = statSync(path);
+    stamp = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
+  } catch {
+    codexCache.delete(path);
+    return Promise.resolve({ id: '', samples: [], snapshots: new Map() });
+  }
+  const cached = codexCache.get(path);
+  if (cached?.stamp === stamp) {
+    codexCache.delete(path);
+    codexCache.set(path, cached);
+    return cached.saved;
+  }
+  const saved = readCodexSamples(path);
+  codexCache.delete(path);
+  codexCache.set(path, { stamp, saved });
+  if (codexCache.size > CODEX_CACHE_SIZE) codexCache.delete(codexCache.keys().next().value!);
+  return saved;
+}
+
+async function readCodexSamples(path: string): Promise<CodexSaved> {
+  const snapshots = new Map<string, LimitSnapshot>();
   let id = '',
     model: string | undefined,
     previous = emptyUsage();
   let samples: UsageSample[] = [];
-  for await (const entry of jsonRecords(path)) {
+  for await (const entry of jsonRecords(path, CODEX_RECORDS)) {
     const payload = obj(entry.payload);
     if (entry.type === 'session_meta') id = str(payload.id) || str(payload.session_id);
     else if (entry.type === 'turn_context') model = str(payload.model) || undefined;
@@ -279,11 +307,11 @@ async function codexSamples(
         snapshots.set(limitId, { at, windows });
     }
   }
-  return { id, samples };
+  return { id, samples, snapshots };
 }
 
 function summarize(
-  session: Omit<SessionInfo, 'brain'> & { brain: UsageBrainId },
+  session: SessionInfo,
   samples: UsageSample[],
   source: SessionUsage['source'],
   prices: UsageOptions['prices'],
@@ -344,33 +372,17 @@ async function readDatabase<T>(path: string, read: (db: Database) => T): Promise
 
 async function opencodeSessions(
   home: string,
-  places: ReadonlySet<string>,
-  options: UsageOptions,
+  selected: SessionInfo[],
+  prices: UsageOptions['prices'],
 ): Promise<SessionUsage[]> {
+  if (!selected.length) return [];
   return (
     (await readDatabase(join(home, 'opencode.db'), (db) => {
-      const directories = [...places];
-      const rows = db
-        .prepare(
-          `SELECT id, directory, title, permission, time_created, time_updated FROM session ` +
-            `WHERE parent_id IS NULL AND time_archived IS NULL AND directory IN (${directories.map(() => '?').join(', ')}) ORDER BY time_updated DESC`,
-        )
-        .all(...directories);
-      const out: SessionUsage[] = [];
-      for (const row of rows) {
-        const r = obj(row);
-        const id = str(r.id);
-        if (!id || (options.sessionId && id !== options.sessionId)) continue;
-        const permissions = parseJson(r.permission);
-        const interactive =
-          !Array.isArray(permissions) ||
-          !permissions.some((rule) => obj(rule).permission === 'plan_exit' && obj(rule).action === 'deny');
-        if (!interactive && !options.headless) continue;
-        if (out.length >= (options.limit ?? 200)) break;
+      return selected.map((session) => {
         const samples: UsageSample[] = [];
         for (const message of db
           .prepare('SELECT data FROM message WHERE session_id = ? ORDER BY time_created, id')
-          .all(id)) {
+          .all(session.id)) {
           const m = obj(parseJson(obj(message).data));
           if (m.role !== 'assistant') continue;
           const tokens = opencodeUsage(obj(m.tokens));
@@ -385,21 +397,26 @@ async function opencodeSessions(
               : {}),
           });
         }
-        const session: Omit<SessionInfo, 'brain'> & { brain: UsageBrainId } = {
-          brain: 'opencode',
-          id,
-          cwd: str(r.directory),
-          interactive,
-        };
-        if (str(r.title)) session.title = str(r.title);
-        const started = iso(r.time_created),
-          updated = iso(r.time_updated);
-        if (started) session.startedAt = started;
-        if (updated) session.updatedAt = updated;
-        out.push(summarize(session, samples, 'opencode_db', options.prices));
-      }
-      return out;
-    })) ?? []
+        if (!samples.length) {
+          // Some stores retain session totals after the individual messages are gone.
+          const row = obj(db.prepare('SELECT * FROM session WHERE id = ?').all(session.id)[0]);
+          const tokens = opencodeUsage({
+            input: row.tokens_input,
+            output: row.tokens_output,
+            reasoning: row.tokens_reasoning,
+            cache: { read: row.tokens_cache_read, write: row.tokens_cache_write },
+          });
+          if (tokens)
+            samples.push({
+              usage: tokens,
+              ...(validNumber(row.cost) && (row.cost > 0 || Object.values(tokens).every((value) => value === 0))
+                ? { costUsd: row.cost }
+                : {}),
+            });
+        }
+        return summarize(session, samples, 'opencode_db', prices);
+      });
+    })) ?? selected.map((session) => summarize(session, [], 'opencode_db', prices))
   );
 }
 

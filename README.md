@@ -237,7 +237,7 @@ account limits. OpenCode's store is `$XDG_DATA_HOME/opencode` or `~/.local/share
 | Claude Code | Whole transcript, counted once per message id; estimate from `prices` | `rate_limit_event` with `live: true` |
 | Codex | Last cumulative rollout total; cost by each turn's model | Freshest rollout snapshots across the account's store |
 | Antigravity | Generation metadata in `conversations/<id>.db`; estimate from `prices` | Unavailable through this API; the CLI exposes `/usage` in its TUI |
-| OpenCode | Assistant messages in `opencode.db`; reported positive cost or estimate from `prices` | Provider-specific; no persisted subscription snapshot |
+| OpenCode | Assistant messages in `opencode.db`, or retained session totals; reported positive cost or estimate from `prices` | Provider-specific; no persisted subscription snapshot |
 
 Limits use fractional `utilization` (`0.95` means 95%), optional `windowMinutes`,
 Unix-second `resetsAt`, and Codex `limitId` for separate model buckets. Their source

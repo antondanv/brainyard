@@ -13,14 +13,18 @@ export interface UsageSample {
 }
 
 /** In-progress writers own the final unterminated line. */
-export async function* jsonRecords(path: string): AsyncGenerator<Record<string, unknown>> {
+export async function* jsonRecords(path: string, match?: RegExp): AsyncGenerator<Record<string, unknown>> {
   const decoder = new StringDecoder('utf8');
-  let pending = '';
+  let fragments: string[] = [];
   try {
     for await (const buffer of createReadStream(path)) {
-      const lines = (pending + decoder.write(buffer as Buffer)).split('\n');
-      pending = lines.pop() ?? '';
-      for (const line of lines) {
+      const chunk = decoder.write(buffer as Buffer);
+      let start = 0;
+      for (let end = chunk.indexOf('\n'); end !== -1; end = chunk.indexOf('\n', start)) {
+        const line = fragments.length ? fragments.join('') + chunk.slice(start, end) : chunk.slice(start, end);
+        fragments = [];
+        start = end + 1;
+        if (match && !match.test(line)) continue;
         try {
           const value: unknown = JSON.parse(line);
           if (value && typeof value === 'object' && !Array.isArray(value)) yield value as Record<string, unknown>;
@@ -28,6 +32,7 @@ export async function* jsonRecords(path: string): AsyncGenerator<Record<string, 
           // A damaged record does not erase earlier counters.
         }
       }
+      if (start < chunk.length) fragments.push(chunk.slice(start));
     }
   } catch {
     // A session may disappear while its store is being listed.
