@@ -35,7 +35,9 @@ const err = paint(process.stderr);
 const HELP = `${out.bold('brainyard')} ${VERSION} — one interface to Claude Code, Codex, Antigravity and OpenCode
 
 ${out.bold('Usage')}
-  brainyard [status]                 which CLIs are installed, signed in and ready
+  brainyard                          the app, full screen: agents and their limits, panes, sessions, usage
+                                     (piped or without a terminal: status)
+  brainyard status                   which CLIs are installed, signed in and ready
   brainyard status --live            prove each with one tiny real call
   brainyard models [brain...]        models and reasoning efforts each CLI offers
   brainyard ask <brain|all> <prompt> one prompt, one answer (answer on stdout)
@@ -51,6 +53,8 @@ ${out.bold('Usage')}
   brainyard usage [brain...]         what the subscriptions have left; tokens and cost of this folder's sessions
   brainyard ui                       local dashboard: status, models and a playground
   brainyard serve                    the HTTP API alone, for scripts in any language (no browser)
+
+${out.bold('The app')}  Enter — into the pane (Ctrl+Q — back) · n new pane · x close · s stop · r continue · ? help · q quit
 
 ${out.bold('Brains')}  claude (Claude Code) · codex (Codex) · antigravity (Antigravity, alias agy) · opencode (OpenCode)
 
@@ -96,6 +100,8 @@ async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   switch (command) {
     case undefined:
+      // In a terminal: the app. Piped or in a script: the status table, as before.
+      if (process.stdin.isTTY && process.stdout.isTTY && process.env.TERM !== 'dumb') return appCommand();
       return statusCommand([]);
     case 'status':
     case 'doctor':
@@ -136,6 +142,16 @@ async function main(argv: string[]): Promise<number> {
       if (command.startsWith('-')) return statusCommand(argv);
       throw new UsageError(`unknown command "${command}"`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// the app
+// ---------------------------------------------------------------------------
+async function appCommand(): Promise<number> {
+  const { runApp } = await import('./tui/terminal.js');
+  const code = await runApp();
+  // Reads still under way (a CLI asked for its status) are of no use now.
+  process.exit(code);
 }
 
 // ---------------------------------------------------------------------------
