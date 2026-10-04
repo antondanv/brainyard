@@ -65,8 +65,8 @@ behaviour below exists because a real run failed without it ([battle-tested quir
 ## Install
 
 ```sh
-npm install -g @antondanv/brainyard    # the `brainyard` command
-npm install @antondanv/brainyard       # the library
+npm install -g @antondanv/brainyard-cli    # the `brainyard` command and the dashboard
+npm install @antondanv/brainyard           # the library alone
 ```
 
 You need Node.js 22+ and at least one agent CLI:

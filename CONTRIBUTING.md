@@ -24,20 +24,31 @@ Node.js 22 or newer. The tests need no agent CLI: they run against fakes.
 
 ## Layout
 
+Two packages in one repository (npm workspaces), released together with one version. Run every
+script from the root.
+
 ```text
-src/
-  brains/        one adapter per CLI: how to call it, how to read its stream
-  run.ts         spawning, stdin, hints, stop, the result
-  ask.ts         one-shot answers
-  status.ts      installed / signed in / ready
-  catalog.ts     models and efforts, and checking a choice
-  cli/           the brainyard command
-  ui/            the dashboard server and page
-test/
-  fixtures/      fake claude, codex and agy
+packages/brainyard/    @antondanv/brainyard: the API
+  src/
+    brains/            one adapter per CLI: how to call it, how to read its stream
+    run.ts             spawning, stdin, hints, stop, the result
+    ask.ts             one-shot answers
+    status.ts          installed / signed in / ready
+    catalog.ts         models and efforts, and checking a choice
+    sessions.ts        saved and running sessions, read from each CLI's store
+    open.ts, panes.ts  an interactive CLI in this terminal or in a tmux pane
+  test/
+    fixtures/          fake claude, codex and agy
+packages/cli/          @antondanv/brainyard-cli: the brainyard command
+  src/main.ts          the commands
+  src/ui/              the dashboard server and page
 scripts/
-  live-check.ts  the matrix against the real CLIs
+  live-check.ts        the matrix against the real CLIs
 ```
+
+The CLI imports the API by its package name, like any other user of it. During development it
+sees the API's sources (`paths` in `tsconfig.json`, an alias in `vitest.config.ts`); the build
+compiles the API first and the CLI against its `dist/`.
 
 ## Rules of the house
 
@@ -54,21 +65,22 @@ scripts/
 
 ## Adding a CLI
 
-1. An adapter in `src/brains/` implementing `Adapter`: `plan()` builds the call, `parser()`
-   reads the stream, `message()` encodes stdin messages when the CLI takes them.
-2. Its entry in `src/brains/info.ts`: install and login hints, capabilities.
-3. A fake in `test/fixtures/`, and tests next to the existing ones.
+1. An adapter in `packages/brainyard/src/brains/` implementing `Adapter`: `plan()` builds the
+   call, `parser()` reads the stream, `message()` encodes stdin messages when the CLI takes them.
+2. Its entry in `packages/brainyard/src/brains/info.ts`: install and login hints, capabilities.
+3. A fake in `packages/brainyard/test/fixtures/`, and tests next to the existing ones.
 4. The checks in `scripts/live-check.ts` passing against the real CLI.
 
 ## Releasing
 
-1. The new version in `package.json` (`npm version minor --no-git-tag-version`) and its
-   section in `CHANGELOG.md`, committed to `main`.
+1. The new version in both packages, and the CLI's dependency on the API set to it
+   (`npm version minor --no-git-tag-version --workspaces`, then the `@antondanv/brainyard`
+   entry in `packages/cli/package.json`), and its section in `CHANGELOG.md`, committed to `main`.
 2. A GitHub release for the tag `v<version>`, with that section as its notes.
 
-Publishing the release runs `.github/workflows/publish.yml`: the checks, the build and
-`npm publish` through trusted publishing, with provenance. A tag that does not match
-`package.json` stops it before anything is published.
+Publishing the release runs `.github/workflows/publish.yml`: the checks, then `npm publish`
+of both packages, the API first, through trusted publishing, with provenance. A tag that does
+not match both `package.json` files stops it before anything is published.
 
 ## Commits and pull requests
 

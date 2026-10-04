@@ -68,8 +68,8 @@ Brainyard — один универсальный инструмент под в
 ## Установка
 
 ```sh
-npm install -g @antondanv/brainyard    # команда brainyard
-npm install @antondanv/brainyard       # библиотека
+npm install -g @antondanv/brainyard-cli    # команда brainyard и дашборд
+npm install @antondanv/brainyard           # только библиотека
 ```
 
 Нужен Node.js 22+ и хотя бы один агентный CLI:
