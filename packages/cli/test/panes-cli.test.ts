@@ -1,4 +1,5 @@
 import { execFile, spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
 
@@ -180,6 +181,21 @@ describe.skipIf(!panesAvailable())('brainyard panes and pane … (real tmux)', (
       await term('kill-session', '-t', '=attach').catch(() => undefined);
       cli(['pane', 'close', pane], { env });
     }
+  });
+
+  it('sessions marks a session that runs in a pane, and stop points to pane close for it', () => {
+    const cwd = realpathSync(tempDir());
+    const started = JSON.parse(cli(['pane', 'start', 'claude', '--cwd', cwd, '--json'], { env }).stdout);
+    const agents = [
+      { id: started.sessionId.slice(0, 8), sessionId: started.sessionId, kind: 'interactive', status: 'idle', cwd },
+    ];
+    const machine = { ...env, HOME: tempDir(), CODEX_HOME: tempDir(), FAKE_AGENTS: JSON.stringify(agents) };
+    const listed = cli(['sessions', '--live', '--cwd', cwd], { env: machine });
+    expect(listed.stdout).toContain(`● open ▣ ${started.pane}`);
+    const stop = cli(['stop', started.sessionId], { env: machine });
+    expect(stop.code).toBe(1);
+    expect(stop.stderr).toContain(`it runs in a pane: brainyard pane close ${started.pane}`);
+    expect(cli(['pane', 'close', started.pane], { env }).code).toBe(0);
   });
 
   it('pane start --attach opens the new pane full screen at once', async () => {

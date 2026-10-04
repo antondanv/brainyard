@@ -5,8 +5,9 @@ import type { PaneInfo } from '@antondanv/brainyard';
 import { describe, expect, it } from 'vitest';
 
 import { Failure, UsageError } from '../src/args.js';
-import { ago, bytes } from '../src/format.js';
+import { ago, bytes, shortPath } from '../src/format.js';
 import { keyBytes, paneLines, resolvePane } from '../src/panes.js';
+import { sessionLines } from '../src/sessions.js';
 import { paint } from '../src/term.js';
 
 const plain = paint(process.stdout, false);
@@ -18,6 +19,11 @@ describe('printed numbers', () => {
     expect(ago(NOW - 5 * 60_000, NOW)).toBe('5m');
     expect(ago(NOW - 3 * 3_600_000, NOW)).toBe('3h');
     expect(ago(NOW - 2 * 86_400_000, NOW)).toBe('2d');
+  });
+
+  it('keeps the end of a long path, where the folder is named', () => {
+    expect(shortPath('/a/b', 10)).toBe('/a/b');
+    expect(shortPath('~/Projects/Brainyard-cli', 14)).toBe('…Brainyard-cli');
   });
 
   it('prints sizes with one decimal below ten', () => {
@@ -116,5 +122,65 @@ describe('the list of panes', () => {
       'codex-0f0f0f0f   Codex        —                 attached',
       'agy-00000000     Antigravity  —                 active',
     ]);
+  });
+});
+
+describe('the list of sessions', () => {
+  it('marks what runs, what waits, how a background one ended and its pane', () => {
+    const at = new Date(NOW - 3 * 3_600_000).toISOString();
+    const saved = sessionLines(
+      [
+        { brain: 'claude', id: 'aaaaaaaa-0000', title: 'Plan the CLI', interactive: true, updatedAt: at },
+        {
+          brain: 'codex',
+          id: 'bbbbbbbb-0000',
+          interactive: true,
+          live: { status: 'busy', kind: 'interactive' },
+          updatedAt: at,
+        },
+        {
+          brain: 'claude',
+          id: 'cccccccc-0000',
+          title: 'deploy',
+          interactive: true,
+          background: true,
+          live: { status: 'idle', kind: 'background', state: 'done' },
+        },
+        {
+          brain: 'claude',
+          id: 'dddddddd-0000',
+          title: 'review',
+          interactive: true,
+          live: { status: 'waiting', kind: 'interactive', waitingFor: 'approve Bash' },
+        },
+        { brain: 'codex', id: 'eeeeeeee-0000', title: 'exec run', interactive: false },
+      ],
+      plain,
+      { now: NOW, panes: new Map([['dddddddd-0000', 'claude-1a2b3c4d']]) },
+    );
+    expect(saved).toEqual([
+      'Claude Code  aaaaaaaa  3h       Plan the CLI',
+      'Codex        bbbbbbbb  3h       (untitled) ● working',
+      'Claude Code  cccccccc           deploy bg ● done',
+      'Claude Code  dddddddd           review ● waiting: approve Bash ▣ claude-1a2b3c4d',
+      'Codex        eeeeeeee           exec run headless',
+    ]);
+  });
+
+  it('shows the folder in a list of the whole machine', () => {
+    const [line] = sessionLines(
+      [
+        {
+          brain: 'claude',
+          id: 'aaaaaaaa-0000',
+          title: 'tests',
+          cwd: join(homedir(), 'code', 'app'),
+          interactive: true,
+        },
+      ],
+      plain,
+      { folders: true, now: NOW },
+    );
+    expect(line).toBe('Claude Code  aaaaaaaa           ~/code/app  tests');
   });
 });

@@ -4,7 +4,6 @@
  * one (`show`), types into it (`send`), takes it full screen (`attach`) and
  * ends it (`close`); its conversation stays resumable.
  */
-import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import {
@@ -24,7 +23,7 @@ import {
 } from '@antondanv/brainyard';
 
 import { brainArg, countArg, Failure, parse, readStdin, UsageError } from './args.js';
-import { ago, bytes } from './format.js';
+import { ago, bytes, cwdFlag } from './format.js';
 import { colourful, type Paint, pad, paint, plain } from './term.js';
 
 const out = paint(process.stdout);
@@ -142,7 +141,7 @@ function noMore(extra: string[]): void {
 }
 
 /** Codex, Antigravity and OpenCode name their session only after it starts: look it up in their stores. */
-async function withSessions(panes: readonly PaneInfo[]): Promise<PaneInfo[]> {
+export async function withSessions(panes: readonly PaneInfo[]): Promise<PaneInfo[]> {
   return Promise.all(
     panes.map(async (pane) => {
       if (pane.sessionId) return pane;
@@ -158,12 +157,6 @@ async function findPane(ref: string | undefined): Promise<PaneInfo> {
   needTmux();
   const panes = await listPanes();
   return panes.find((pane) => pane.pane === ref) ?? resolvePane(ref, await withSessions(panes));
-}
-
-/** ` --cwd <folder>` when the pane works elsewhere: a session resumes in its own folder. */
-function cwdFlag(cwd: string | undefined): string {
-  if (!cwd || resolve(cwd) === process.cwd()) return '';
-  return ` --cwd ${/^[\w@%+=:,./~-]+$/.test(cwd) ? cwd : `'${cwd.replaceAll("'", `'\\''`)}'`}`;
 }
 
 export async function panesCommand(args: string[]): Promise<number> {

@@ -15,19 +15,16 @@ import {
   type BrainStatus,
   BrainyardError,
   type Catalog,
-  clip,
   type McpServer,
   models,
   open,
   type RunResult,
-  type SessionInfo,
-  sessions,
   start,
   status,
 } from '@antondanv/brainyard';
 import { accessArg, brainArg, Failure, parse, promptFrom, secondsArg, UsageError } from './args.js';
-import { ago } from './format.js';
 import { paneCommand, panesCommand } from './panes.js';
+import { sessionsCommand, stopCommand } from './sessions.js';
 import { feedLine, pad, paint } from './term.js';
 import { VERSION } from './version.js';
 
@@ -43,6 +40,8 @@ ${out.bold('Usage')}
   brainyard ask <brain|all> <prompt> one prompt, one answer (answer on stdout)
   brainyard run <brain> <prompt>     run an agent with a live feed; type to steer it
   brainyard sessions [brain...]      sessions of this folder in every CLI, running ones marked
+  brainyard sessions --live          what runs on this machine now, in every CLI, and what it waits for
+  brainyard stop <session>           stop a Claude Code background session; its conversation stays
   brainyard open <brain> [prompt]    open a CLI here as a session you can come back to
   brainyard panes                    CLI sessions in tmux panes, which outlive this terminal
   brainyard pane start <brain> …     open a CLI in a new pane, as open does; prints the pane's name
@@ -60,7 +59,9 @@ ${out.bold('ask')}      --model <m>  --effort <e>  --system <text>  --web  --acc
 ${out.bold('run')}      --cwd <dir>  --model <m>  --effort <e>  --resume <session>
          --access <full|workspace|readonly>  --no-web  --no-shell  --mcp <servers.json>
          --timeout <sec>  --json  --raw  --verbose  --quiet  --no-nudge  --no-steer  --no-stdin
-${out.bold('sessions')} --cwd <dir>  --headless  --limit <n>  --json
+${out.bold('sessions')} --cwd <dir>  --headless  --limit <n> (per CLI)  --json
+         --live: running now, on the whole machine unless --cwd  --all: with --live, finished background ones too
+${out.bold('stop')}     <session>: its id, the start of it or its short id  --cwd <dir> (defaults to the session's)
 ${out.bold('open')}     --cwd <dir>  --resume <session>  --name <name>  --system <text>  --model <m>  --effort <e>
          --mode <permission mode>  --worktree [name]  --bg (Claude Code)  --json
 ${out.bold('panes')}    --json
@@ -100,6 +101,8 @@ async function main(argv: string[]): Promise<number> {
       return runCommand(rest);
     case 'sessions':
       return sessionsCommand(rest);
+    case 'stop':
+      return stopCommand(rest);
     case 'open':
       return openCommand(rest);
     case 'panes':
@@ -249,46 +252,8 @@ async function modelsCommand(args: string[]): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
-// sessions / open
+// open
 // ---------------------------------------------------------------------------
-async function sessionsCommand(args: string[]): Promise<number> {
-  const { values, positionals } = parse(args, {
-    cwd: { type: 'string' },
-    headless: { type: 'boolean' },
-    limit: { type: 'string' },
-    json: { type: 'boolean' },
-  });
-  const brains = positionals.length > 0 ? positionals.map((value) => brainArg(value)) : [...BRAIN_IDS];
-  const limit = values.limit === undefined ? 20 : Number(values.limit);
-  if (!Number.isInteger(limit) || limit <= 0) throw new UsageError(`--limit wants a number, not "${values.limit}"`);
-  const list = await sessions({ cwd: values.cwd ?? process.cwd(), brains, headless: values.headless === true, limit });
-  if (values.json) {
-    process.stdout.write(`${JSON.stringify(list, null, 2)}\n`);
-    return 0;
-  }
-  if (list.length === 0) {
-    process.stdout.write(`${out.dim('no sessions in this folder yet')}\n`);
-    return 0;
-  }
-  const lines = list.map((session) => sessionLine(session));
-  process.stdout.write(`${lines.join('\n')}\n`);
-  return 0;
-}
-
-function sessionLine(session: SessionInfo): string {
-  const label = pad(BRAINS[session.brain].label, 12);
-  const when = session.updatedAt ?? session.startedAt;
-  const age = when ? ago(Date.parse(when)) : '';
-  let state = '';
-  if (session.live?.status === 'busy') state = out.cyan(' ● working');
-  else if (session.live?.status === 'waiting')
-    state = out.yellow(` ● waiting${session.live.waitingFor ? `: ${session.live.waitingFor}` : ''}`);
-  else if (session.live) state = out.green(' ● open');
-  const title = session.title ? clip(session.title, 72) : out.dim('(untitled)');
-  const bg = session.background ? out.dim(' bg') : '';
-  return `${label} ${out.dim(session.id.slice(0, 8))}  ${pad(age, 8)} ${title}${bg}${state}`;
-}
-
 async function openCommand(args: string[]): Promise<number> {
   const { values, positionals } = parse(args, {
     cwd: { type: 'string' },
