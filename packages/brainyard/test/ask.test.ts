@@ -57,6 +57,7 @@ describe('ask() with OpenCode', () => {
     const calls = recording();
     const answer = await ask('opencode', 'What is 2+2?', {
       command: FAKE.opencode,
+      model: 'sber/GigaChat-3-Pro',
       env: { FAKE_RECORD: calls.path },
       system: 'Answer with a number.',
     });

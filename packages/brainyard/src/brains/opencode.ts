@@ -41,7 +41,7 @@ const WEB_TOOLS = ['webfetch', 'websearch', 'codesearch'];
 // no) or denied by a rule.
 const DENIED = /rejected permission|rule which prevents you/i;
 
-type Rule = 'allow' | 'deny';
+type Rule = 'allow' | 'deny' | 'ask';
 
 export const opencode: Adapter = {
   id: 'opencode',
@@ -55,6 +55,14 @@ export const opencode: Adapter = {
     if (!launch.resume) args.push('--title=');
     if (launch.flags.has('--thinking')) args.push('--thinking');
 
+    // A tool is switched off by taking it away (`deny`) — except where OpenCode
+    // Zen's free tier would refuse the request: it wants OpenCode's own tools
+    // ("can only be used from within OpenCode"). There the tool stays listed and
+    // every call of it is rejected (`ask`, which `run` answers with no). Not with
+    // `--auto`, which would approve it.
+    const model = launch.model ?? opencodeDefaultModel();
+    const zen = !model || model.startsWith('opencode/');
+    const off: Rule = zen && launch.access !== 'full' ? 'ask' : 'deny';
     const permission: Record<string, Rule> = {};
     if (launch.access === 'full') {
       // `run` rejects whatever would need a question — a path outside the
@@ -67,17 +75,17 @@ export const opencode: Adapter = {
         // There is no sandbox: a command writes wherever it points (checked:
         // `echo x > ~/file` went through). Workspace access keeps the shell
         // only where a CLI can confine it.
-        permission.bash = 'deny';
+        permission.bash = off;
         warnings.push(
           'OpenCode cannot confine its shell to the folder, so workspace access turns the shell off; use full access to run commands',
         );
       }
     } else {
-      permission.edit = 'deny';
-      permission.bash = 'deny';
+      permission.edit = off;
+      permission.bash = off;
     }
-    if (!launch.web) for (const tool of WEB_TOOLS) permission[tool] = 'deny';
-    if (!launch.shell) permission.bash = 'deny';
+    if (!launch.web) for (const tool of WEB_TOOLS) permission[tool] = off;
+    if (!launch.shell) permission.bash = off;
 
     const config: Record<string, unknown> = {
       // Without it a refused tool ends the turn on the spot, without a word;
@@ -103,7 +111,8 @@ export const opencode: Adapter = {
     if (launch.isolated) {
       // An answer is not an agent run: its own instructions instead of the
       // coding persona, and for `readonly` no tools at all. Tool definitions
-      // are most of the prompt: 8.7k tokens for "pong" with them, 0.2k without.
+      // are most of the prompt: 8.7k tokens for "pong" with them, 0.2k without
+      // (6k on Zen, which wants them listed).
       const agent: Record<string, unknown> = {
         description: 'One-shot answers for Brainyard',
         mode: 'primary',
@@ -111,7 +120,7 @@ export const opencode: Adapter = {
       };
       if (launch.access === 'readonly') {
         agent.permission = {
-          '*': 'deny',
+          '*': off,
           ...(launch.web ? Object.fromEntries(WEB_TOOLS.map((tool) => [tool, 'allow'])) : {}),
         };
       }

@@ -254,38 +254,41 @@ describe('antigravity', () => {
 
 describe('opencode', () => {
   const env = (plan: { env: Record<string, string> }, name: string) => JSON.parse(plan.env[name] ?? '{}');
+  // A provider of its own; OpenCode Zen's models get tools refused instead of taken away (below).
+  const oc = (overrides: Partial<Launch> = {}) =>
+    launch({ brain: 'opencode', model: 'sber/GigaChat-3-Pro', ...overrides });
 
   it('runs one prompt from stdin, titled after it instead of a generated title', () => {
-    const plan = opencode.plan(launch({ brain: 'opencode' }));
+    const plan = opencode.plan(oc());
     expect(plan.input).toBe('text');
     expect(plan.args.slice(0, 3)).toEqual(['run', '--format', 'json']);
     expect(plan.args).toContain('--title=');
-    const resumed = opencode.plan(launch({ brain: 'opencode', resume: 'ses_abc' })).args;
+    const resumed = opencode.plan(oc({ resume: 'ses_abc' })).args;
     expect(flagValue(resumed, '--session')).toBe('ses_abc');
     expect(resumed).not.toContain('--title=');
   });
 
   it('maps access levels to its permissions; the shell is off where it cannot be confined', () => {
-    const full = opencode.plan(launch({ brain: 'opencode' }));
+    const full = opencode.plan(oc());
     expect(full.args).toContain('--auto');
     expect(full.env.OPENCODE_PERMISSION).toBeUndefined();
-    const workspace = opencode.plan(launch({ brain: 'opencode', access: 'workspace' }));
+    const workspace = opencode.plan(oc({ access: 'workspace' }));
     expect(env(workspace, 'OPENCODE_PERMISSION')).toEqual({ external_directory: 'deny', bash: 'deny' });
     expect(workspace.args).not.toContain('--auto');
     expect(workspace.warnings[0]).toMatch(/cannot confine its shell/);
-    const readonly = opencode.plan(launch({ brain: 'opencode', access: 'readonly' }));
+    const readonly = opencode.plan(oc({ access: 'readonly' }));
     expect(env(readonly, 'OPENCODE_PERMISSION')).toEqual({ edit: 'deny', bash: 'deny' });
     expect(readonly.warnings).toEqual([]);
   });
 
   it('uses the old name of --auto only where the CLI has nothing else', () => {
-    const old = opencode.plan(launch({ brain: 'opencode', flags: new Set(['--dangerously-skip-permissions']) }));
+    const old = opencode.plan(oc({ flags: new Set(['--dangerously-skip-permissions']) }));
     expect(old.args).toContain('--dangerously-skip-permissions');
     expect(old.args).not.toContain('--auto');
   });
 
   it('switches web and shell off by name', () => {
-    const plan = opencode.plan(launch({ brain: 'opencode', web: false, shell: false }));
+    const plan = opencode.plan(oc({ web: false, shell: false }));
     expect(env(plan, 'OPENCODE_PERMISSION')).toEqual({
       webfetch: 'deny',
       websearch: 'deny',
@@ -296,8 +299,7 @@ describe('opencode', () => {
 
   it('lets the agent answer after a refusal, and passes MCP servers as inline config', () => {
     const plan = opencode.plan(
-      launch({
-        brain: 'opencode',
+      oc({
         mcpServers: { docs: { command: 'node', args: ['server.js'], env: { TOKEN: 'x' } } },
       }),
     );
@@ -309,7 +311,7 @@ describe('opencode', () => {
 
   it('passes model, effort and thinking where the CLI has them', () => {
     const args = opencode.plan(
-      launch({ brain: 'opencode', model: 'sber/GigaChat-3-Pro', effort: 'high', flags: new Set(['--thinking']) }),
+      oc({ model: 'sber/GigaChat-3-Pro', effort: 'high', flags: new Set(['--thinking']) }),
     ).args;
     expect(flagValue(args, '--model')).toBe('sber/GigaChat-3-Pro');
     expect(flagValue(args, '--variant')).toBe('high');
@@ -317,25 +319,41 @@ describe('opencode', () => {
   });
 
   it('answers as an agent of its own: no coding persona, no tools, no CLAUDE.md', () => {
-    const plan = opencode.plan(launch({ brain: 'opencode', isolated: true, access: 'readonly', web: false }));
+    const plan = opencode.plan(oc({ isolated: true, access: 'readonly', web: false }));
     expect(flagValue(plan.args, '--agent')).toBe(ANSWER_AGENT);
     expect(plan.env.OPENCODE_DISABLE_CLAUDE_CODE).toBe('1');
     const agent = env(plan, 'OPENCODE_CONFIG_CONTENT').agent[ANSWER_AGENT];
     expect(agent).toMatchObject({ mode: 'primary', prompt: ANSWER_SYSTEM, permission: { '*': 'deny' } });
     expect(plan.prompt).toBe(TRICKY);
-    const framed = opencode.plan(
-      launch({ brain: 'opencode', isolated: true, access: 'readonly', web: true, system: 'Be brief.' }),
-    );
+    const framed = opencode.plan(oc({ isolated: true, access: 'readonly', web: true, system: 'Be brief.' }));
     expect(env(framed, 'OPENCODE_CONFIG_CONTENT').agent[ANSWER_AGENT]).toMatchObject({
       prompt: 'Be brief.',
       permission: { '*': 'deny', webfetch: 'allow', websearch: 'allow' },
     });
   });
 
+  it('on OpenCode Zen keeps tools listed and refuses their calls: its free tier wants them', () => {
+    for (const model of ['opencode/big-pickle', undefined]) {
+      const readonly = opencode.plan(oc({ model, access: 'readonly', web: false }));
+      expect(env(readonly, 'OPENCODE_PERMISSION')).toEqual({
+        edit: 'ask',
+        bash: 'ask',
+        webfetch: 'ask',
+        websearch: 'ask',
+        codesearch: 'ask',
+      });
+      const answer = opencode.plan(oc({ model, isolated: true, access: 'readonly', web: false }));
+      expect(env(answer, 'OPENCODE_CONFIG_CONTENT').agent[ANSWER_AGENT].permission).toEqual({ '*': 'ask' });
+    }
+    // `--auto` would approve a question: with full access a switch still takes the tool away.
+    const full = opencode.plan(oc({ model: 'opencode/big-pickle', shell: false }));
+    expect(env(full, 'OPENCODE_PERMISSION')).toEqual({ bash: 'deny' });
+  });
+
   it("keeps what the caller's environment already sets, under its own settings", () => {
     vi.stubEnv('OPENCODE_CONFIG_CONTENT', JSON.stringify({ model: 'x/y', experimental: { other: 1 } }));
     vi.stubEnv('OPENCODE_PERMISSION', JSON.stringify({ read: 'allow', bash: 'allow' }));
-    const plan = opencode.plan(launch({ brain: 'opencode', access: 'readonly' }));
+    const plan = opencode.plan(oc({ access: 'readonly' }));
     expect(env(plan, 'OPENCODE_CONFIG_CONTENT')).toEqual({
       model: 'x/y',
       experimental: { other: 1, continue_loop_on_deny: true },
