@@ -24,7 +24,7 @@ import {
 
 import { brainArg, countArg, Failure, parse, readStdin, UsageError } from './args.js';
 import { ago, bytes, cwdFlag } from './format.js';
-import { colourful, type Paint, pad, paint, plain } from './term.js';
+import { colourful, type Paint, paint, plain, table } from './term.js';
 
 const out = paint(process.stdout);
 const err = paint(process.stderr);
@@ -111,16 +111,7 @@ export function paneLines(rows: readonly PaneRow[], c: Paint, now = Date.now()):
       row.label ? clip(row.label, 60) : '',
     ];
   });
-  const widths = cells.reduce<number[]>(
-    (max, cols) => cols.map((cell, column) => Math.max(max[column] ?? 0, plain(cell).length)),
-    [],
-  );
-  return cells.map((cols) =>
-    cols
-      .map((cell, column) => (column < cols.length - 1 ? pad(cell, widths[column] ?? 0) : cell))
-      .join('  ')
-      .trimEnd(),
-  );
+  return table(cells);
 }
 
 function needTmux(): void {

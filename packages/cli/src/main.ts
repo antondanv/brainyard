@@ -26,6 +26,7 @@ import { accessArg, brainArg, Failure, parse, promptFrom, secondsArg, UsageError
 import { paneCommand, panesCommand } from './panes.js';
 import { sessionsCommand, stopCommand } from './sessions.js';
 import { feedLine, pad, paint } from './term.js';
+import { usageCommand } from './usage.js';
 import { VERSION } from './version.js';
 
 const out = paint(process.stdout);
@@ -47,6 +48,7 @@ ${out.bold('Usage')}
   brainyard pane start <brain> …     open a CLI in a new pane, as open does; prints the pane's name
   brainyard pane attach <pane>       the pane full screen; Ctrl+Q — back
   brainyard pane show|send|close …   print its screen · type into it · end it (the session stays)
+  brainyard usage [brain...]         what the subscriptions have left; tokens and cost of this folder's sessions
   brainyard ui                       local dashboard: status, models and a playground
 
 ${out.bold('Brains')}  claude (Claude Code) · codex (Codex) · antigravity (Antigravity, alias agy) · opencode (OpenCode)
@@ -71,6 +73,8 @@ ${out.bold('pane')}     start <brain> [prompt]: open's flags but --bg, and --lab
          send <pane> [text|-]: Enter after the text unless --no-enter; --key <name> (repeatable):
                  enter, esc, tab, shift-tab, up, down, left, right, backspace, ctrl-<letter>…
          <pane> is its name, or the start of its name or of its session's id
+${out.bold('usage')}    --cwd <dir>  --session <id>  --limits (subscriptions only)  --limit <n> (per CLI)  --headless
+         --prices <file.json>  --offline (saved stores only)  --live (one tiny real Claude call)  --timeout <sec>  --json
 ${out.bold('ui')}       --port <n> (4747)  --host <addr> (127.0.0.1)  --token <t>  --no-open
 
 ${out.bold('Examples')}
@@ -103,6 +107,8 @@ async function main(argv: string[]): Promise<number> {
       return sessionsCommand(rest);
     case 'stop':
       return stopCommand(rest);
+    case 'usage':
+      return usageCommand(rest);
     case 'open':
       return openCommand(rest);
     case 'panes':

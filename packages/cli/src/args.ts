@@ -1,7 +1,8 @@
 /** Arguments of the `brainyard` command: flags, brains, numbers and prompts. */
+import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
-import { type Access, BRAIN_IDS, type BrainId, brainId } from '@antondanv/brainyard';
+import { type Access, BRAIN_IDS, type BrainId, brainId, type ModelPrice } from '@antondanv/brainyard';
 
 /** A mistake in how the command was called: exit code 2 and a pointer to the help. */
 export class UsageError extends Error {}
@@ -50,6 +51,23 @@ export function countArg(flag: string, value: string, min = 1): number {
   const count = Number(value);
   if (!Number.isInteger(count) || count < min) throw new UsageError(`${flag} wants a number, not "${value}"`);
   return count;
+}
+
+/** `--prices <file.json>`: dollars per million tokens by model, as `prices` in the API. */
+export function pricesArg(path: string): Record<string, ModelPrice> {
+  let data: unknown;
+  try {
+    data = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new UsageError(`--prices: cannot read ${path}: ${(error as Error).message}`);
+  }
+  const shape = '--prices wants {"model": {"input": 3, "output": 15}} in dollars per million tokens';
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new UsageError(shape);
+  for (const [model, price] of Object.entries(data)) {
+    const { input, output } = (price ?? {}) as Record<string, unknown>;
+    if (typeof input !== 'number' || typeof output !== 'number') throw new UsageError(`${shape}; ${model} is not`);
+  }
+  return data as Record<string, ModelPrice>;
 }
 
 export async function readStdin(): Promise<string> {

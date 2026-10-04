@@ -5,10 +5,11 @@ import type { PaneInfo } from '@antondanv/brainyard';
 import { describe, expect, it } from 'vitest';
 
 import { Failure, UsageError } from '../src/args.js';
-import { ago, bytes, shortPath } from '../src/format.js';
+import { ago, bytes, money, shortPath, tokens, until, windowName } from '../src/format.js';
 import { keyBytes, paneLines, resolvePane } from '../src/panes.js';
 import { sessionLines } from '../src/sessions.js';
 import { paint } from '../src/term.js';
+import { limitLines } from '../src/usage.js';
 
 const plain = paint(process.stdout, false);
 const NOW = Date.parse('2026-10-04T12:00:00Z');
@@ -24,6 +25,28 @@ describe('printed numbers', () => {
   it('keeps the end of a long path, where the folder is named', () => {
     expect(shortPath('/a/b', 10)).toBe('/a/b');
     expect(shortPath('~/Projects/Brainyard-cli', 14)).toBe('…Brainyard-cli');
+  });
+
+  it('prints tokens, dollars and the time left before a reset', () => {
+    expect([tokens(950), tokens(1234), tokens(34_000), tokens(8_100_000), tokens(2_000_000_000)]).toEqual([
+      '950',
+      '1.2k',
+      '34k',
+      '8.1M',
+      '2B',
+    ]);
+    expect([money(4.214), money(0.00051), money(0)]).toEqual(['$4.21', '$0.0005', '$0.00']);
+    expect(until(NOW + 35 * 60_000, NOW)).toBe('35m');
+    expect(until(NOW + 130 * 60_000, NOW)).toBe('2h 10m');
+    expect(until(NOW + 99 * 3_600_000, NOW)).toBe('4d 3h');
+    expect(until(NOW - 1000, NOW)).toBe('now');
+  });
+
+  it('names a limit window by its length where the CLI gives one', () => {
+    expect(windowName({ window: 'primary', windowMinutes: 300 })).toBe('5h');
+    expect(windowName({ window: 'secondary', windowMinutes: 10_080 })).toBe('weekly');
+    expect(windowName({ window: 'five_hour' })).toBe('five-hour');
+    expect(windowName({ window: 'monthly' })).toBe('monthly');
   });
 
   it('prints sizes with one decimal below ten', () => {
@@ -182,5 +205,59 @@ describe('the list of sessions', () => {
       { folders: true, now: NOW },
     );
     expect(line).toBe('Claude Code  aaaaaaaa           ~/code/app  tests');
+  });
+});
+
+describe('the subscription limits', () => {
+  it('put a model pool to a line, flag what is nearly used up and say why a CLI has none', () => {
+    const resets = Math.floor((NOW + 130 * 60_000) / 1000);
+    const lines = limitLines(
+      [
+        {
+          brain: 'claude',
+          limits: null,
+          limitsSource: null,
+          limitsObservedAt: null,
+          limitsUnavailable: 'not_requested',
+        },
+        {
+          brain: 'codex',
+          limits: [
+            { window: 'primary', utilization: 0.23, windowMinutes: 300, resetsAt: resets, limitId: 'codex' },
+            { window: 'secondary', utilization: 0.92, windowMinutes: 10_080, limitId: 'codex' },
+          ],
+          limitsSource: 'rollout',
+          limitsObservedAt: new Date(NOW - 12 * 60_000).toISOString(),
+          limitsUnavailable: null,
+        },
+        {
+          brain: 'antigravity',
+          limits: [
+            { window: '5h', utilization: 0, windowMinutes: 300, group: 'Gemini Models', limitId: 'gemini-5h' },
+            { window: '5h', utilization: 0.5, windowMinutes: 300, group: 'Claude and GPT', limitId: 'other-5h' },
+          ],
+          limitsSource: 'cli',
+          limitsObservedAt: new Date(NOW).toISOString(),
+          limitsUnavailable: null,
+        },
+        {
+          brain: 'opencode',
+          limits: null,
+          limitsSource: null,
+          limitsObservedAt: null,
+          limitsUnavailable: 'missing',
+          detail: 'No OpenCode Go key.',
+        },
+      ],
+      plain,
+      NOW,
+    );
+    expect(lines).toEqual([
+      'Claude Code  not checked: --live asks with one tiny real call, which may cost',
+      'Codex        5h 23% · resets in 2h 10m   weekly 92%   seen 12m ago',
+      'Antigravity  Gemini Models: 5h 0%',
+      '             Claude and GPT: 5h 50%',
+      'OpenCode     No OpenCode Go key.',
+    ]);
   });
 });

@@ -55,6 +55,24 @@ export function pad(text: string, size: number): string {
   return text + ' '.repeat(Math.max(0, size - width(text)));
 }
 
+/** Rows in columns two spaces apart; the `right` columns (numbers) line up on the right. */
+export function table(rows: readonly string[][], right: ReadonlySet<number> = new Set()): string[] {
+  const widths: number[] = [];
+  for (const row of rows) {
+    for (const [column, cell] of row.entries()) widths[column] = Math.max(widths[column] ?? 0, width(cell));
+  }
+  return rows.map((row) =>
+    row
+      .map((cell, column) => {
+        const room = (widths[column] ?? 0) - width(cell);
+        if (right.has(column)) return ' '.repeat(Math.max(0, room)) + cell;
+        return column < row.length - 1 ? cell + ' '.repeat(Math.max(0, room)) : cell;
+      })
+      .join('  ')
+      .trimEnd(),
+  );
+}
+
 const MARKS: Partial<Record<AgentEvent['kind'], string>> = {
   init: '◆',
   message: '›',

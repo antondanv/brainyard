@@ -5,21 +5,10 @@ import { claudeProjectDir } from '@antondanv/brainyard';
 import { describe, expect, it } from 'vitest';
 
 import { recording, tempDir } from '../../brainyard/test/helpers.js';
-import { cli } from './run-cli.js';
+import { cli, machine } from './run-cli.js';
 
 /** A project folder by its real name, as the CLIs store it (`/private/var/…` on macOS). */
 const project = () => realpathSync(tempDir('brainyard-project-'));
-
-/** A machine of the test's own: its stores are empty folders, and `claude agents` reports `agents`. */
-function machine(agents: unknown[] = []): Record<string, string> {
-  const home = tempDir('brainyard-home-');
-  return {
-    HOME: home,
-    CLAUDE_CONFIG_DIR: join(home, '.claude'),
-    CODEX_HOME: join(home, '.codex'),
-    FAKE_AGENTS: JSON.stringify(agents),
-  };
-}
 
 /** One session open in a terminal here, one in the background elsewhere, as `claude agents` lists them. */
 function running(here: string, elsewhere: string) {

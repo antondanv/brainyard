@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { FAKE } from '../../brainyard/test/helpers.js';
+import { FAKE, tempDir } from '../../brainyard/test/helpers.js';
 
 /** The CLI package: `src/main.ts` runs from here. */
 export const root = fileURLToPath(new URL('..', import.meta.url));
@@ -33,4 +34,15 @@ export function cli(args: string[], options: { input?: string; env?: Record<stri
     timeout: 30_000,
   });
   return { code: done.status, stdout: done.stdout, stderr: done.stderr };
+}
+
+/** A machine of the test's own: its CLI stores are empty folders, and `claude agents` reports `agents`. */
+export function machine(agents: unknown[] = []): Record<string, string> {
+  const home = tempDir('brainyard-home-');
+  return {
+    HOME: home,
+    CLAUDE_CONFIG_DIR: join(home, '.claude'),
+    CODEX_HOME: join(home, '.codex'),
+    FAKE_AGENTS: JSON.stringify(agents),
+  };
 }
