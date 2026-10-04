@@ -2,7 +2,7 @@
 // Run: npx tsx examples/mcp.ts [claude|codex|antigravity]
 import { fileURLToPath } from 'node:url';
 
-import { run } from '../src/index.js';
+import { run } from '@antondanv/brainyard';
 
 const server = fileURLToPath(new URL('./mcp-server.mjs', import.meta.url));
 const result = await run({

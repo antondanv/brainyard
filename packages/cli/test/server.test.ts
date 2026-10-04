@@ -2,9 +2,8 @@ import { createHash } from 'node:crypto';
 import { request } from 'node:http';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
+import { FAKE } from '../../brainyard/test/helpers.js';
 import { type Dashboard, serve } from '../src/ui/server.js';
-import { FAKE } from './helpers.js';
 
 const TOKEN = 'test-token-123';
 let server: Dashboard;

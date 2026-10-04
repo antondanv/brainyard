@@ -1,5 +1,5 @@
 /** Terminal output without a dependency: colours honour NO_COLOR and FORCE_COLOR. */
-import type { AgentEvent } from '../types.js';
+import type { AgentEvent } from '@antondanv/brainyard';
 
 function enabled(stream: NodeJS.WriteStream): boolean {
   if (process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== '') return false;

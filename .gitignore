@@ -5,3 +5,9 @@ coverage/
 .DS_Store
 .env
 .scratch/
+
+# Copied from the root before packing (scripts/package-files.mjs)
+packages/*/README.md
+packages/*/README.ru.md
+packages/*/CHANGELOG.md
+packages/*/LICENSE

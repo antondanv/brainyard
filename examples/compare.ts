@@ -1,6 +1,6 @@
 // The same question to every installed CLI, side by side.
 // Run: npx tsx examples/compare.ts "your question"
-import { askAll, BRAINS } from '../src/index.js';
+import { askAll, BRAINS } from '@antondanv/brainyard';
 
 const question = process.argv.slice(2).join(' ') || 'What is the single most common cause of flaky tests?';
 const entries = await askAll(question);

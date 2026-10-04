@@ -1,62 +1,26 @@
 {
-  "name": "@antondanv/brainyard",
-  "version": "0.1.0",
-  "description": "One API for agentic coding CLIs — Claude Code, Codex and Antigravity: status checks, one-shot asks, streamed agent runs with steering, sessions, models and MCP.",
-  "keywords": [
-    "claude-code",
-    "codex",
-    "antigravity",
-    "agent",
-    "agents",
-    "cli",
-    "llm",
-    "mcp",
-    "ai",
-    "headless"
-  ],
-  "homepage": "https://github.com/antondanv/brainyard#readme",
-  "bugs": {
-    "url": "https://github.com/antondanv/brainyard/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/antondanv/brainyard.git"
-  },
+  "name": "brainyard-workspace",
+  "private": true,
+  "description": "Brainyard: @antondanv/brainyard (the API) and @antondanv/brainyard-cli (the brainyard command).",
   "license": "MIT",
   "author": "Anton Danilov",
   "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./package.json": "./package.json"
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "bin": {
-    "brainyard": "dist/cli/main.js"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "README.ru.md",
-    "LICENSE",
-    "CHANGELOG.md"
+  "workspaces": [
+    "packages/brainyard",
+    "packages/cli"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "build": "npm run build --workspaces",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "tsx src/cli/main.ts",
-    "live": "tsx scripts/live-check.ts",
-    "prepublishOnly": "npm run lint && npm run typecheck && npm test && npm run build"
+    "dev": "tsx packages/cli/src/main.ts",
+    "live": "tsx scripts/live-check.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

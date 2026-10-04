@@ -52,8 +52,8 @@ describe.skipIf(!panesAvailable())('interactive terminal handoff', () => {
       setInterval(() => undefined, 1000);
     `,
     );
-    const tsx = fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url));
-    const tsconfig = fileURLToPath(new URL('../tsconfig.json', import.meta.url));
+    const tsx = fileURLToPath(new URL('../../../node_modules/.bin/tsx', import.meta.url));
+    const tsconfig = fileURLToPath(new URL('../../../tsconfig.json', import.meta.url));
     await term(
       'new-session',
       '-d',

@@ -28,7 +28,7 @@ export {
 } from './catalog.js';
 export { estimateCost } from './cost.js';
 export { BrainyardError, classifyFailure, findReset } from './errors.js';
-export { describeTool, tidyPaths } from './humanize.js';
+export { clip, describeTool, tidyPaths } from './humanize.js';
 export { type OpenOptions, type OpenPlan, type OpenResult, open, planOpen } from './open.js';
 export {
   attachPane,

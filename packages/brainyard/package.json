@@ -1,0 +1,52 @@
+{
+  "name": "@antondanv/brainyard",
+  "version": "0.1.0",
+  "description": "One API for agentic coding CLIs — Claude Code, Codex and Antigravity: status checks, one-shot asks, streamed agent runs with steering, sessions, models and MCP.",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "antigravity",
+    "agent",
+    "agents",
+    "cli",
+    "llm",
+    "mcp",
+    "ai",
+    "headless"
+  ],
+  "homepage": "https://github.com/antondanv/brainyard#readme",
+  "bugs": {
+    "url": "https://github.com/antondanv/brainyard/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/antondanv/brainyard.git",
+    "directory": "packages/brainyard"
+  },
+  "license": "MIT",
+  "author": "Anton Danilov",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "README.ru.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node ../../scripts/clean.mjs && tsc -p tsconfig.build.json",
+    "prepack": "npm run build && node ../../scripts/package-files.mjs"
+  }
+}

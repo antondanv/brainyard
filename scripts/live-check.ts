@@ -26,7 +26,7 @@ import {
   run,
   start,
   status,
-} from '../src/index.js';
+} from '@antondanv/brainyard';
 
 const CHEAP: Record<BrainId, Pick<RunOptions, 'model' | 'effort'>> = {
   claude: { model: 'haiku' },

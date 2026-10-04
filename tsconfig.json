@@ -15,7 +15,11 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "noEmit": true
+    "noEmit": true,
+    // Typecheck, tests and `npm run dev` see the API's sources, so the CLI never waits for a build.
+    "paths": {
+      "@antondanv/brainyard": ["./packages/brainyard/src/index.ts"]
+    }
   },
-  "include": ["src", "test", "scripts", "examples", "vitest.config.ts"]
+  "include": ["packages/*/src", "packages/*/test", "scripts", "examples", "vitest.config.ts"]
 }

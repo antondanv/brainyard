@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": false,
+    "sourceMap": true,
+    // Built against the API's published shape (its dist/), not its sources.
+    "paths": {}
+  },
+  "include": ["src"]
+}

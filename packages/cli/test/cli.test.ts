@@ -3,12 +3,12 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { FAKE, tempDir } from './helpers.js';
+import { FAKE, tempDir } from '../../brainyard/test/helpers.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
 function cli(args: string[], options: { input?: string; env?: Record<string, string> } = {}) {
-  const done = spawnSync(process.execPath, ['--import', 'tsx', 'src/cli/main.ts', ...args], {
+  const done = spawnSync(process.execPath, ['--import', 'tsx', 'src/main.ts', ...args], {
     cwd: root,
     input: options.input ?? '',
     encoding: 'utf8',

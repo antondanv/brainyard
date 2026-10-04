@@ -1,7 +1,6 @@
 // One prompt, one answer — from whichever CLI is ready.
 // Run: npx tsx examples/ask.ts
-// In your project: import { ask, status } from '@antondanv/brainyard';
-import { ask, status } from '../src/index.js';
+import { ask, status } from '@antondanv/brainyard';
 
 const { ready } = await status();
 if (ready.length === 0) throw new Error('no agent CLI is ready: run `npx @antondanv/brainyard status`');

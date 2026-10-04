@@ -8,19 +8,29 @@ import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 
-import { ask, askAll } from '../ask.js';
-import { BRAINS, brainId } from '../brains/info.js';
-import { type Catalog, models } from '../catalog.js';
-import { BrainyardError } from '../errors.js';
-import { clip } from '../humanize.js';
-import { open } from '../open.js';
-import { start } from '../run.js';
-import { type SessionInfo, sessions } from '../sessions.js';
-import { type BrainStatus, status } from '../status.js';
-import type { Access, BrainId, McpServer, RunResult } from '../types.js';
-import { BRAIN_IDS } from '../types.js';
-import { VERSION } from '../version.js';
+import {
+  type Access,
+  ask,
+  askAll,
+  BRAIN_IDS,
+  BRAINS,
+  type BrainId,
+  type BrainStatus,
+  BrainyardError,
+  brainId,
+  type Catalog,
+  clip,
+  type McpServer,
+  models,
+  open,
+  type RunResult,
+  type SessionInfo,
+  sessions,
+  start,
+  status,
+} from '@antondanv/brainyard';
 import { feedLine, pad, paint } from './term.js';
+import { VERSION } from './version.js';
 
 const out = paint(process.stdout);
 const err = paint(process.stderr);
@@ -600,7 +610,7 @@ async function uiCommand(args: string[]): Promise<number> {
   const port = values.port === undefined ? 4747 : Number(values.port);
   if (!Number.isInteger(port) || port < 0 || port > 65535)
     throw new UsageError(`--port wants a number, not "${values.port}"`);
-  const { serve, openBrowser } = await import('../ui/server.js');
+  const { serve, openBrowser } = await import('./ui/server.js');
   const server = await serve({
     port,
     ...(values.host ? { host: values.host } : {}),

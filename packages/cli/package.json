@@ -1,0 +1,49 @@
+{
+  "name": "@antondanv/brainyard-cli",
+  "version": "0.1.0",
+  "description": "The brainyard command for Claude Code, Codex and Antigravity: status, models, asks, agent runs, sessions and a local dashboard, built on @antondanv/brainyard.",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "antigravity",
+    "agent",
+    "agents",
+    "cli",
+    "llm",
+    "tmux",
+    "tui",
+    "ai"
+  ],
+  "homepage": "https://github.com/antondanv/brainyard#readme",
+  "bugs": {
+    "url": "https://github.com/antondanv/brainyard/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/antondanv/brainyard.git",
+    "directory": "packages/cli"
+  },
+  "license": "MIT",
+  "author": "Anton Danilov",
+  "type": "module",
+  "bin": {
+    "brainyard": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.ru.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node ../../scripts/clean.mjs && tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "prepack": "npm run build && node ../../scripts/package-files.mjs"
+  },
+  "dependencies": {
+    "@antondanv/brainyard": "0.1.0"
+  }
+}

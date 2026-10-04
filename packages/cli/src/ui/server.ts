@@ -18,14 +18,22 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { ask } from '../ask.js';
-import { brainId } from '../brains/info.js';
-import { models } from '../catalog.js';
-import { BrainyardError } from '../errors.js';
-import { clip, tidyPaths } from '../humanize.js';
-import { type AgentRun, start } from '../run.js';
-import { status } from '../status.js';
-import type { Access, AgentEvent, BrainId, RunResult } from '../types.js';
+import {
+  type Access,
+  type AgentEvent,
+  type AgentRun,
+  ask,
+  type BrainId,
+  BrainyardError,
+  brainId,
+  clip,
+  models,
+  type RunResult,
+  start,
+  status,
+  tidyPaths,
+} from '@antondanv/brainyard';
+
 import { VERSION } from '../version.js';
 import { FAVICON, page } from './page.js';
 

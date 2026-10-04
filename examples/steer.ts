@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { start } from '../src/index.js';
+import { start } from '@antondanv/brainyard';
 
 const agent = start({
   brain: 'antigravity',
