@@ -35,6 +35,13 @@ All notable changes to this project are documented here. The format follows
   `usage` for subscription limits and the tokens and cost of a folder's sessions. A pane is
   named by its name or the start of its name or session id; `pane send` presses Enter as a key
   of its own, so a CLI that reads a fast burst as a paste still sends the message.
+- `brainyard` in a terminal opens the app: one full screen with the agents and their
+  subscription limits, the panes (what each CLI does, its memory, how long it has been quiet),
+  sessions running in other folders, and the folder's sessions with their tokens and cost. Enter
+  goes into a pane and Ctrl+Q comes back; `n` starts a new pane, `x` closes one, `s` stops a
+  Claude Code background session, `r` continues a saved session in a pane, `q` quits and the
+  panes keep running. The screen is a pure function of the app's state, so a browser can draw
+  the same frames.
 - `brainyard serve`: the HTTP API alone, with no browser. Its token can come from
   `$BRAINYARD_TOKEN`, and `--json` prints `{url, port, token}` for the program that starts it.
   The API adds `GET /api/sessions`, `GET /api/sessions/live`, `POST /api/sessions/:id/stop`,
@@ -47,6 +54,8 @@ All notable changes to this project are documented here. The format follows
 - `sessions()` leaves out headless runs that are working right now unless `headless: true`, as
   it already did with saved ones.
 - A session id may contain `_` (OpenCode's ids are `ses_…`).
+- `brainyard` without arguments prints the status table only without a terminal (piped, in a
+  script); in a terminal it opens the app. `brainyard status` prints the table anywhere.
 - `brainyard serve` is no longer another name for `brainyard ui`: it opens no browser. Without
   `--port`, both take 4747 or the next free port, and both stop on `SIGTERM` as on Ctrl+C.
 

@@ -58,6 +58,8 @@ behaviour below exists because a real run failed without it ([battle-tested quir
   global config touched.
 - **Typed failures.** `usage_limit` (with the reset time), `rate_limited`, `not_logged_in`,
   `network`… so you know whether to wait a minute, wait until 6:50pm or sign in.
+- **One app.** `brainyard` opens a full-screen app in the terminal: agents and their limits,
+  panes, sessions and usage. Enter takes you into a pane, Ctrl+Q brings you back.
 - **Dashboard.** `brainyard ui` opens status cards and a playground over a local, token-guarded
   HTTP API that other languages can use too.
 - **No runtime dependencies.**
@@ -80,8 +82,51 @@ You need Node.js 22+ and at least one agent CLI:
 
 ## Command line
 
+**The app.** `brainyard` in a terminal is one full-screen app: the agents with their
+subscription limits; the panes with what each CLI does, its memory and how long it has been
+quiet; sessions running in other folders; and this folder's sessions with their tokens and
+cost. It keeps reading them while it is open and makes no paid call of its own.
+
 ```console
 $ brainyard
+Brainyard 0.2.0 · ~/code/app                                                        2 panes · 405 MB
+
+Agents
+  ● Claude Code  2.1.280   ready         signed in with claude.ai, max
+    limits  not checked: brainyard usage --live (one tiny real call)
+  ● Codex        0.153.4   ready         signed in with ChatGPT · default model gpt-6-astra
+    limits  5h 34% · resets in 2h   weekly 92% · resets in 4d 3h   seen 3h ago
+  ● Antigravity  1.2.13    ready         signed in · model list fetched with your account
+    limits  Gemini Models: weekly 1%
+            Claude and GPT models: weekly 40%
+  ● OpenCode     —         not installed → npm install -g opencode-ai
+
+Panes · 2
+› claude-1a2b3c4d  Claude Code  aaaa1111  285 MB  working            active     ~/code/app    auth refactor
+  codex-5e6f7a8b   Codex        bbbb2222  120 MB  waiting: approval  quiet 12m  ~/code/other
+
+Running in other folders · 1
+  Claude Code  cccc3333  3m       ~/code/other  Nightly cleanup bg ● working
+
+Sessions of ~/code/app · 3 · $4.23 + 1 unpriced · 14k in · 38k out · 31M cache
+  Claude Code  aaaa1111  now  1.2k in   34k out  31M cache     $4.21  Auth refactor ● working ▣ claude-1a2b3c4d
+  Claude Code  dddd4444  3h    950 in   120 out                $0.02  Fix the flaky test
+  Codex        eeee5555  2d    12k in  3.4k out             no price  Explain CRDTs
+
+ Enter go in (Ctrl+Q back) · x close · n new · ? help · q quit
+```
+
+Enter goes into the selected pane, full screen, and Ctrl+Q comes back; on an agent Enter starts
+a new pane of it, on a saved session it continues the session in a pane. `n` starts a new pane
+in this folder (choose the CLI), `x` closes a pane (what was said in it stays), `s` stops a
+Claude Code background session, `r` continues a saved session, Tab jumps between sections, `?`
+lists the keys and `q` quits; the panes keep running. Russian keyboard letters work by their
+place on the keyboard.
+
+**Status.** Piped or in a script, `brainyard` prints this table, as `brainyard status` does:
+
+```console
+$ brainyard status
 Brainyard 0.1.0
 
   ● Claude Code  2.1.280   ready         signed in with claude.ai, pro
@@ -167,7 +212,8 @@ Sessions of ~/Projects/Brainyard
 
 | Command | What it does |
 |---|---|
-| `brainyard [status]` | Which CLIs are installed, signed in and ready (`--live`, `--models`, `--json`) |
+| `brainyard` | The app, full screen: agents and their limits, panes, sessions, usage; piped — the status |
+| `brainyard status` | Which CLIs are installed, signed in and ready (`--live`, `--models`, `--json`) |
 | `brainyard models [brain…]` | Models and efforts each CLI offers |
 | `brainyard ask <brain\|all> <prompt>` | One prompt, one answer (`--model`, `--effort`, `--system`, `--web`) |
 | `brainyard run <brain> <prompt>` | An agent with a live feed (`--cwd`, `--resume`, `--access`, `--mcp`, `--no-web`, `--json`) |

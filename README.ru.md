@@ -61,6 +61,8 @@ Brainyard — один универсальный инструмент под в
   конкретному CLI, общие конфиги не трогаются.
 - **Типизированные сбои.** `usage_limit` (со временем сброса), `rate_limited`,
   `not_logged_in`, `network`… Сразу видно, ждать минуту, ждать до 18:50 или идти логиниться.
+- **Одно приложение.** `brainyard` открывает в терминале полноэкранное приложение: агенты и
+  лимиты, панели, сессии и использование. Enter — в панель, Ctrl+Q — назад.
 - **Веб-панель.** `brainyard ui` открывает карточки статуса и песочницу поверх локального
   HTTP API под токеном, которым можно пользоваться и из других языков.
 - **Ноль зависимостей в рантайме.**
@@ -83,8 +85,51 @@ npm install @antondanv/brainyard           # только библиотека
 
 ## Командная строка
 
+**Приложение.** `brainyard` в терминале — одно полноэкранное приложение: агенты с лимитами
+подписок; панели — что делает CLI, сколько памяти занимает и сколько молчит; сессии, которые
+работают в других папках; сессии этой папки с токенами и стоимостью. Пока оно открыто, всё
+перечитывается само; платных вызовов приложение не делает.
+
 ```console
 $ brainyard
+Brainyard 0.2.0 · ~/code/app                                                        2 panes · 405 MB
+
+Agents
+  ● Claude Code  2.1.280   ready         signed in with claude.ai, max
+    limits  not checked: brainyard usage --live (one tiny real call)
+  ● Codex        0.153.4   ready         signed in with ChatGPT · default model gpt-6-astra
+    limits  5h 34% · resets in 2h   weekly 92% · resets in 4d 3h   seen 3h ago
+  ● Antigravity  1.2.13    ready         signed in · model list fetched with your account
+    limits  Gemini Models: weekly 1%
+            Claude and GPT models: weekly 40%
+  ● OpenCode     —         not installed → npm install -g opencode-ai
+
+Panes · 2
+› claude-1a2b3c4d  Claude Code  aaaa1111  285 MB  working            active     ~/code/app    auth refactor
+  codex-5e6f7a8b   Codex        bbbb2222  120 MB  waiting: approval  quiet 12m  ~/code/other
+
+Running in other folders · 1
+  Claude Code  cccc3333  3m       ~/code/other  Nightly cleanup bg ● working
+
+Sessions of ~/code/app · 3 · $4.23 + 1 unpriced · 14k in · 38k out · 31M cache
+  Claude Code  aaaa1111  now  1.2k in   34k out  31M cache     $4.21  Auth refactor ● working ▣ claude-1a2b3c4d
+  Claude Code  dddd4444  3h    950 in   120 out                $0.02  Fix the flaky test
+  Codex        eeee5555  2d    12k in  3.4k out             no price  Explain CRDTs
+
+ Enter go in (Ctrl+Q back) · x close · n new · ? help · q quit
+```
+
+Enter — в выбранную панель на весь экран, Ctrl+Q — назад; на агенте Enter открывает новую
+панель с ним, на сохранённой сессии — продолжает её в панели. `n` — новая панель в этой папке
+(с выбором CLI), `x` — закрыть панель (сказанное в ней остаётся), `s` — остановить фоновую
+сессию Claude Code, `r` — продолжить сохранённую сессию, Tab — к следующему разделу, `?` —
+все клавиши, `q` — выход; панели продолжают работать. Русская раскладка тоже работает: клавиши
+берутся по месту на клавиатуре.
+
+**Статус.** В пайпе или в скрипте `brainyard` печатает эту таблицу, как `brainyard status`:
+
+```console
+$ brainyard status
 Brainyard 0.1.0
 
   ● Claude Code  2.1.280   ready         signed in with claude.ai, pro
@@ -171,7 +216,8 @@ Sessions of ~/Projects/Brainyard
 
 | Команда | Что делает |
 |---|---|
-| `brainyard [status]` | Какие CLI установлены, залогинены и готовы (`--live`, `--models`, `--json`) |
+| `brainyard` | Приложение на весь экран: агенты и лимиты, панели, сессии, использование; в пайпе — статус |
+| `brainyard status` | Какие CLI установлены, залогинены и готовы (`--live`, `--models`, `--json`) |
 | `brainyard models [brain…]` | Модели и усилия каждого CLI |
 | `brainyard ask <brain\|all> <prompt>` | Один вопрос, один ответ (`--model`, `--effort`, `--system`, `--web`) |
 | `brainyard run <brain> <prompt>` | Агент с живой лентой (`--cwd`, `--resume`, `--access`, `--mcp`, `--no-web`, `--json`) |

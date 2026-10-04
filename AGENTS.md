@@ -35,9 +35,12 @@ npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же д
 - `packages/cli/` — `@antondanv/brainyard-cli`: `src/main.ts` — команда `brainyard` (диспетчер,
   status, models, ask, run, open, ui и serve), `src/panes.ts`, `sessions.ts`, `usage.ts` — panes и
   pane, sessions и stop, usage; `src/args.ts` — флаги, `src/format.ts` и `term.ts` — вывод;
-  `src/ui/` — дашборд и HTTP API. Тесты команды — `test/run-cli.ts`: он всегда задаёт тестовый
-  сокет tmux. API берёт только из `@antondanv/brainyard`, как внешний пользователь; чего не
-  хватает — экспортируй из `packages/brainyard/src/index.ts` осознанно.
+  `src/ui/` — дашборд и HTTP API; `src/tui/` — приложение (`brainyard` без аргументов):
+  `state.ts` — состояние и события, `update.ts` и `view.ts` — чистые `update(state, событие)` и
+  `render(state) → строки`, `app.ts` — чтение по расписанию и эффекты, `terminal.ts` — экран
+  терминала. Экран — чистая функция: веб рисует те же кадры. Тесты команды — `test/run-cli.ts`:
+  он всегда задаёт тестовый сокет tmux. API берёт только из `@antondanv/brainyard`, как внешний
+  пользователь; чего не хватает — экспортируй из `packages/brainyard/src/index.ts` осознанно.
 - CLI видит исходники API без сборки: `paths` в `tsconfig.json`, alias в `vitest.config.ts`.
   Сборка — сначала API, потом CLI по его `dist/`.
 - README, README.ru, CHANGELOG и LICENSE лежат в корне; в пакеты их копирует `prepack`.
