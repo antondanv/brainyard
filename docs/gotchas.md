@@ -332,7 +332,10 @@ the prompt, so a no-tools ask with Haiku costs a fraction of a cent ($0.0009–0
 OpenCode answers as an agent of its own (`--agent brainyard-answer`, defined in
 `OPENCODE_CONFIG_CONTENT`): its prompt replaces the coding persona, `readonly` denies every
 tool, and `OPENCODE_DISABLE_CLAUDE_CODE=1` keeps `~/.claude/CLAUDE.md` and Claude Code's skills
-out (OpenCode reads them too). A one-word answer went from 8.7k tokens to 0.2k.
+out (OpenCode reads them too). A one-word answer went from 8.7k tokens to 0.2k. OpenCode keeps
+every session and has no flag against it, so `ask()` deletes its own afterwards
+(`opencode session delete`, 0.4 s); the answers would otherwise pile up in the session list of
+its desktop app.
 
 ## Reading the stream
 

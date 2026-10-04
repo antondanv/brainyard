@@ -10,8 +10,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { ADAPTERS } from './brains/index.js';
 import { BRAINS } from './brains/info.js';
 import { BrainyardError } from './errors.js';
+import { commandFor } from './options.js';
+import { capture } from './process.js';
 import { startAnswer } from './run.js';
 import type { AskOptions, AskResult, BrainId } from './types.js';
 import { BRAIN_IDS } from './types.js';
@@ -39,6 +42,7 @@ export async function ask(brain: BrainId | string, prompt: string, options: AskO
       options.system,
     );
     const result = await agent.result;
+    await forget(result.brain, result.sessionId, options);
     if (!result.ok) {
       throw BrainyardError.from(
         result.error ?? { kind: 'failed', message: 'the run failed', retryable: false },
@@ -65,6 +69,24 @@ export async function ask(brain: BrainId | string, prompt: string, options: AskO
     return answer;
   } finally {
     if (options.cwd === undefined) rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * An answer is not a conversation to come back to. Claude Code and Codex are
+ * told not to keep it; a CLI that cannot be told deletes it afterwards. Best
+ * effort: the answer does not depend on it.
+ */
+async function forget(brain: BrainId, sessionId: string | undefined, options: AskOptions): Promise<void> {
+  const args = sessionId ? ADAPTERS[brain].forget?.(sessionId) : undefined;
+  if (!args) return;
+  try {
+    await capture(commandFor(brain, options.command), args, {
+      timeoutMs: 15_000,
+      env: { ...process.env, ...options.env },
+    });
+  } catch {
+    // Not installed any more, or gone already: nothing to clean.
   }
 }
 

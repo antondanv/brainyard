@@ -149,6 +149,11 @@ export const opencode: Adapter = {
     return text;
   },
 
+  forget(sessionId: string): string[] {
+    // `run` has no flag that keeps a session out of the store.
+    return ['session', 'delete', sessionId];
+  },
+
   parser(cwd: string, model?: string, mcpServers: readonly string[] = []): StreamParser {
     return new OpencodeParser(cwd, model ?? opencodeDefaultModel(), mcpServers);
   },

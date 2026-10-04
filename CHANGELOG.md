@@ -15,6 +15,7 @@ All notable changes to this project are documented here. The format follows
 - `parseOpencodeModels()` and `opencodeHome()`.
 - `Catalog.complete`: the CLI runs no model outside its list (OpenCode), so an unknown name is
   refused before the start.
+- `ask()` with OpenCode deletes its session afterwards: OpenCode cannot be told not to keep one.
 
 ### Changed
 

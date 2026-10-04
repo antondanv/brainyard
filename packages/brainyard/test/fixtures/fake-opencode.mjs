@@ -2,11 +2,17 @@
 // A stand-in for `opencode`. `run --format json` prints the parts of the session
 // the way opencode 1.18.34 does: no final event, the process just exits. The TUI
 // leaves its session in opencode.db under FAKE_OPENCODE_HOME, as the real one does.
-import { writeFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { lines, recorder } from './fake-common.mjs';
 
 const args = process.argv.slice(2);
+// Deleting a session is a call of its own; it must not overwrite the record of the run.
+if (args[0] === 'session' && args[1] === 'delete') {
+  if (process.env.FAKE_DELETE_LOG) appendFileSync(process.env.FAKE_DELETE_LOG, `${args[2]}\n`);
+  console.log(`Session ${args[2]} deleted`);
+  process.exit(0);
+}
 const scenario = process.env.FAKE_SCENARIO ?? 'ok';
 const record = recorder(args);
 const out = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);

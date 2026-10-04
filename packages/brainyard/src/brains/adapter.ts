@@ -75,6 +75,11 @@ export interface Adapter {
   /** A user message in this CLI's stream-json input format: one line, no newline. */
   message(text: string): string;
   /**
+   * Arguments that delete a session, for a CLI that keeps every one-shot
+   * answer and cannot be told not to (OpenCode). `ask()` runs them afterwards.
+   */
+  forget?(sessionId: string): string[];
+  /**
    * `model`: the one asked for, until the CLI names the one it runs.
    * `mcpServers`: the servers given to this run, for CLIs that fold the server
    * name into the tool name.

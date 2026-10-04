@@ -1,10 +1,11 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
 import { ask, askAll } from '../src/ask.js';
 import { clearFlagCache } from '../src/flags.js';
-import { FAKE, recording } from './helpers.js';
+import { FAKE, recording, tempDir } from './helpers.js';
 
 describe('ask()', () => {
   it('answers in a fresh folder that is removed afterwards, isolated from the user setup', async () => {
@@ -72,6 +73,20 @@ describe('ask() with OpenCode', () => {
       permission: { '*': 'deny' },
     });
     expect(JSON.parse(call.env.OPENCODE_PERMISSION ?? '{}')).toMatchObject({ edit: 'deny', bash: 'deny' });
+  });
+
+  it('leaves no session behind: OpenCode keeps every one, so the answer deletes its own', async () => {
+    const deleted = join(tempDir(), 'deleted.txt');
+    const options = { command: FAKE.opencode, model: 'sber/GigaChat-3-Pro', env: { FAKE_DELETE_LOG: deleted } };
+    await ask('opencode', 'hello', options);
+    // A failed answer created a session too.
+    await expect(
+      ask('opencode', 'hello', { ...options, env: { ...options.env, FAKE_SCENARIO: 'fail' } }),
+    ).rejects.toThrow(/Cannot connect/);
+    expect(readFileSync(deleted, 'utf8').trim().split('\n')).toEqual([
+      'ses_fakeRun0000000000000001',
+      'ses_fakeRun0000000000000001',
+    ]);
   });
 });
 
