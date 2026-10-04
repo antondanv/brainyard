@@ -1,7 +1,7 @@
 /** Saved session usage and subscription metadata, with opt-in Claude inference. */
 import { statSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 
 import { obj, str } from './brains/adapter.js';
@@ -23,7 +23,7 @@ import {
   type SessionInfo,
   sessions,
 } from './sessions.js';
-import { agyLimits, opencodeLimits } from './subscription-limits.js';
+import { agyLimits, claudeCachedLimits, opencodeLimits } from './subscription-limits.js';
 import type { BrainId, LimitWindow, ModelPrice, RunError, Usage } from './types.js';
 import { BRAIN_IDS, emptyUsage } from './types.js';
 import {
@@ -86,7 +86,8 @@ export interface BrainUsage {
   brain: BrainId;
   /** Null means unavailable, not 0% used. */
   limits: LimitWindow[] | null;
-  limitsSource: 'rollout' | 'live' | 'cli' | 'api' | null;
+  /** `cache`: what the CLI itself fetched last and keeps on disk (Claude Code). */
+  limitsSource: 'rollout' | 'live' | 'cli' | 'api' | 'cache' | null;
   /** ISO snapshot observation time; Codex uses the persisted event timestamp. */
   limitsObservedAt: string | null;
   limitsUnavailable: 'not_requested' | 'missing' | 'unsupported' | 'failed' | null;
@@ -143,11 +144,7 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
         const samples = await claudeSamples(files.get(session.id));
         report.sessions.push(summarize(session, samples, 'transcript', options.prices));
       }
-      report.brains.push(
-        options.live
-          ? await claudeLimits(home, env, options)
-          : unavailable(brain, 'not_requested', 'Claude subscription windows require live: true.'),
-      );
+      report.brains.push(options.live ? await claudeLimits(home, env, options) : claudeCachedLimits(claudeFile(home)));
     } else if (brain === 'codex') {
       const snapshots = new Map<string, LimitSnapshot>();
       const files = rolloutFiles(join(home, 'sessions'));
@@ -211,6 +208,15 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
     (a, b) => (Date.parse(b.updatedAt ?? b.startedAt ?? '') || 0) - (Date.parse(a.updatedAt ?? a.startedAt ?? '') || 0),
   );
   return report;
+}
+
+/**
+ * Claude Code's global file: `~/.claude.json` beside the default `~/.claude`,
+ * or `.claude.json` inside a store of its own (`CLAUDE_CONFIG_DIR`, `homes`).
+ */
+function claudeFile(home: string): string {
+  const standard = join(homedir(), '.claude');
+  return resolve(home) === standard ? join(homedir(), '.claude.json') : join(home, '.claude.json');
 }
 
 function storeHome(brain: BrainId, env: NodeJS.ProcessEnv): string {

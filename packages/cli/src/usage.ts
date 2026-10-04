@@ -26,6 +26,8 @@ const out = paint(process.stdout);
 const err = paint(process.stderr);
 
 function windowText(limit: LimitWindow, c: Paint, now: number): string {
+  // A window that has reset since it was seen: its old share says nothing now.
+  if (limit.resetsAt && limit.resetsAt * 1000 <= now) return `${windowName(limit)} ${c.dim('reset since seen')}`;
   const used = Math.round(limit.utilization * 100);
   const tint = used >= 90 ? c.red : used >= 70 ? c.yellow : (text: string) => text;
   let resets = '';
@@ -38,6 +40,15 @@ function windowText(limit: LimitWindow, c: Paint, now: number): string {
 
 /** Why a CLI shows no windows, in the command's words where the reason is a flag. */
 function noLimits(brain: BrainUsage): string {
+  // Claude Code keeps what its /usage fetched; until then only a real call tells.
+  if (
+    brain.brain === 'claude' &&
+    brain.limitsUnavailable === 'missing' &&
+    !brain.error &&
+    !/another account/.test(brain.detail ?? '')
+  ) {
+    return 'not seen yet: /usage in Claude Code shows them, or --live (one tiny real call)';
+  }
   if (brain.limitsUnavailable === 'not_requested') {
     return brain.brain === 'claude'
       ? 'not checked: --live asks with one tiny real call, which may cost'

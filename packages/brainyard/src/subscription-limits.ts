@@ -13,6 +13,58 @@ import type { BrainUsage, UsageOptions } from './usage.js';
 
 const GO_USAGE_URL = 'https://opencode.ai/zen/go/v1/usage';
 
+/** Claude Code's windows as its usage report names them; model-specific weekly ones form pools of their own. */
+const CLAUDE_WINDOWS: Record<string, { minutes: number; group?: string }> = {
+  five_hour: { minutes: 300 },
+  seven_day: { minutes: 10_080 },
+  seven_day_opus: { minutes: 10_080, group: 'Opus' },
+  seven_day_sonnet: { minutes: 10_080, group: 'Sonnet' },
+};
+
+/**
+ * The subscription windows Claude Code itself fetched last (what its /usage
+ * shows), from the `cachedUsageUtilization` it keeps in its global file
+ * (`~/.claude.json`, or `.claude.json` in `CLAUDE_CONFIG_DIR`). Free and
+ * offline, and only as fresh as `limitsObservedAt`; a cache of another
+ * account than the one signed in now is not used.
+ */
+export function claudeCachedLimits(path: string): BrainUsage {
+  const data = obj(file(path));
+  const cached = obj(data.cachedUsageUtilization);
+  const account = str(obj(data.oauthAccount).accountUuid);
+  const owner = str(cached.accountUuid);
+  if (account && owner && account !== owner) {
+    return missing('claude', 'missing', 'Claude Code cached its usage for another account than the one signed in.');
+  }
+  const utilization = obj(cached.utilization);
+  const limits: LimitWindow[] = [];
+  for (const [window, shape] of Object.entries(CLAUDE_WINDOWS)) {
+    const entry = obj(utilization[window]);
+    if (!nonnegative(entry.utilization)) continue;
+    // Percent here; a live call reports a fraction.
+    const limit: LimitWindow = { window, utilization: entry.utilization / 100, windowMinutes: shape.minutes };
+    const resets = seconds(entry.resets_at);
+    if (resets !== undefined) limit.resetsAt = resets;
+    if (shape.group) limit.group = shape.group;
+    limits.push(limit);
+  }
+  if (limits.length === 0) {
+    return missing(
+      'claude',
+      'missing',
+      'Claude Code has not shown its usage here yet: /usage in it does, or one tiny real call (live: true).',
+    );
+  }
+  const fetched = cached.fetchedAtMs;
+  return {
+    brain: 'claude',
+    limits,
+    limitsSource: 'cache',
+    limitsObservedAt: typeof fetched === 'number' && Number.isFinite(fetched) ? new Date(fetched).toISOString() : null,
+    limitsUnavailable: null,
+  };
+}
+
 export async function agyLimits(env: NodeJS.ProcessEnv, options: UsageOptions): Promise<BrainUsage> {
   const brain = 'antigravity';
   if (options.signal?.aborted) return failed(brain, 'stopped', 'Antigravity quota check was cancelled.');

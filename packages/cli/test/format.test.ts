@@ -260,4 +260,26 @@ describe('the subscription limits', () => {
       'OpenCode     No OpenCode Go key.',
     ]);
   });
+
+  it('say a window has reset since it was seen, instead of its old share', () => {
+    const past = Math.floor((NOW - 60 * 60_000) / 1000);
+    const later = Math.floor((NOW + 36 * 3_600_000) / 1000);
+    const lines = limitLines(
+      [
+        {
+          brain: 'claude',
+          limits: [
+            { window: 'five_hour', utilization: 0.62, windowMinutes: 300, resetsAt: past },
+            { window: 'seven_day', utilization: 1, windowMinutes: 10_080, resetsAt: later },
+          ],
+          limitsSource: 'cache',
+          limitsObservedAt: new Date(NOW - 7 * 3_600_000).toISOString(),
+          limitsUnavailable: null,
+        },
+      ],
+      plain,
+      NOW,
+    );
+    expect(lines).toEqual(['Claude Code  5h reset since seen   weekly 100% · resets in 1d 12h   seen 7h ago']);
+  });
 });

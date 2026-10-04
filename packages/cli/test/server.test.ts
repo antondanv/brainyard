@@ -263,7 +263,7 @@ describe('sessions and usage over HTTP', () => {
         costSource: 'estimate',
       }),
     ]);
-    expect(report.brains).toEqual([expect.objectContaining({ brain: 'claude', limitsUnavailable: 'not_requested' })]);
+    expect(report.brains).toEqual([expect.objectContaining({ brain: 'claude', limitsUnavailable: 'missing' })]);
     expect((await post('/api/usage', { offline: true, live: true })).status).toBe(400);
     expect((await post('/api/usage', { prices: { x: { input: 'free' } } })).status).toBe(400);
     expect((await post('/api/usage', { brains: 'claude' })).status).toBe(400);

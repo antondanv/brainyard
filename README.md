@@ -226,7 +226,7 @@ called unless you pass `--live`; `--prices` turns tokens into dollars.
 ```console
 $ brainyard usage
 Subscription limits
-  Claude Code  not checked: --live asks with one tiny real call, which may cost
+  Claude Code  5h reset since seen   weekly 100% · resets in 1d 12h   seen 7h ago
   Codex        5h 52% · resets in 2h 36m   weekly 32% · resets in 5d 11h   seen 35m ago
   Antigravity  Gemini Models: weekly 1% · resets in 3d 21h   5h 0% · resets in 1h 27m
                Claude and GPT models: weekly 4% · resets in 3d 21h   5h 2% · resets in 2h 50m
@@ -355,14 +355,15 @@ account limits. OpenCode's store is `$XDG_DATA_HOME/opencode` or `~/.local/share
 
 | CLI | Saved session tokens and cost | Subscription limits |
 |---|---|---|
-| Claude Code | Whole transcript, counted once per message id; estimate from `prices` | `rate_limit_event` with `live: true` |
+| Claude Code | Whole transcript, counted once per message id; estimate from `prices` | What Claude Code itself fetched last (its `/usage`), kept in `~/.claude.json`; `rate_limit_event` with `live: true` |
 | Codex | Last cumulative rollout total; cost by each turn's model | Freshest rollout snapshots across the account's store |
 | Antigravity | Generation metadata in `conversations/<id>.db`; estimate from `prices` | `agy -p /usage --output-format json`: weekly and five-hour quotas by model group |
 | OpenCode | Assistant messages in `opencode.db`, or retained session totals; reported positive cost or estimate from `prices` | OpenCode Go API: rolling, weekly and monthly subscription windows |
 
 Limits use fractional `utilization` (`0.95` means 95%), optional `windowMinutes`,
 Unix-second `resetsAt`, and `limitId` for separate quota buckets. Antigravity also
-provides `group` and `label`. Their source (`rollout`, `live`, `cli` or `api`) and
+provides `group` and `label`, and so do Claude Code's per-model weekly windows. Their
+source (`rollout`, `live`, `cli`, `api` or `cache`) and
 observation time accompany the snapshot; an old snapshot is not a live check.
 Limits apply to the account and are independent of the requested folder or session.
 
@@ -376,6 +377,12 @@ project or inline OpenCode config can override the stored key; `{env:NAME}` is
 supported. A missing key or Go subscription returns an explanation. `offline: true`
 skips both metadata requests and reads saved stores only; it cannot be combined with
 `live: true`.
+
+Claude Code keeps the windows it fetched last (when its `/usage` shows them) in its
+global file, `~/.claude.json`, or `.claude.json` inside `CLAUDE_CONFIG_DIR`: `usage()`
+reads them there for free, with the time they were fetched, and leaves a cache of
+another account out. A window whose reset time has passed since then says nothing
+about now.
 
 `live: true` makes one isolated, minimal Claude call with a 30-second timeout by
 default and can incur a charge. It keeps stored conversations intact. An unsuccessful

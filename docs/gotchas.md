@@ -269,6 +269,10 @@ an hour. When a CLI does not answer, a built-in list is used and marked `source:
 - Claude transcript counters are per message id; repeated fragments replace the
   previous counters for that message. The transcript does not supply the live
   `rate_limit_event` or a trustworthy saved session dollar total.
+- Claude Code keeps the subscription windows its `/usage` fetched last in
+  `~/.claude.json` (`cachedUsageUtilization`: `fetchedAtMs`, `accountUuid`, and
+  `utilization.five_hour` / `seven_day` / `seven_day_opus` / `seven_day_sonnet` in whole
+  percent with `resets_at`). Other keys there are internal code names; they are left out.
 - Codex `token_count.info.total_token_usage` is cumulative. Adding snapshots doubles
   the session. `turn_context.model` prices increments when the model changes; a
   corrected/decreased total loses its historical model assignment, so its cost is unknown.

@@ -61,7 +61,13 @@ export function codexTokens(input = 100, output = 20, cached = 40): unknown {
   };
 }
 
-export function codexLimits(at: string, percent: number, id = 'codex'): unknown {
+/** A rate-limit snapshot; `resets` (Unix seconds) for tests that print how long is left. */
+export function codexLimits(
+  at: string,
+  percent: number,
+  id = 'codex',
+  resets: [number, number] = [1791115200, 1791720000],
+): unknown {
   return {
     type: 'event_msg',
     timestamp: at,
@@ -70,8 +76,8 @@ export function codexLimits(at: string, percent: number, id = 'codex'): unknown 
       info: null,
       rate_limits: {
         limit_id: id,
-        primary: { used_percent: percent, window_minutes: 300, resets_at: 1791115200 },
-        secondary: { used_percent: 25, window_minutes: 10080, resets_at: 1791720000 },
+        primary: { used_percent: percent, window_minutes: 300, resets_at: resets[0] },
+        secondary: { used_percent: 25, window_minutes: 10080, resets_at: resets[1] },
       },
     },
   };

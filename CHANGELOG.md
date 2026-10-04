@@ -24,6 +24,9 @@ All notable changes to this project are documented here. The format follows
 - Codex subscription windows from rollout snapshots, with duration, reset time and
   separate limit buckets; opt-in live Claude subscription windows, including rejected
   calls. Unavailable data carries a reason and is never presented as zero usage.
+- Claude Code's subscription windows without a call: the ones it fetched last (its `/usage`)
+  from `~/.claude.json`, with the time they were fetched; `limitsSource: 'cache'`. A cache of
+  another account than the one signed in is left out. `live: true` still asks with a real call.
 - Antigravity grouped subscription quotas through its structured `/usage` command
   (CLI 1.1.11+), and OpenCode Go rolling, weekly and monthly quotas through its usage
   API. Both are metadata requests without inference, with timeouts and cancellation.

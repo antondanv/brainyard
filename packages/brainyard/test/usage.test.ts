@@ -20,6 +20,74 @@ import { FAKE, recording, tempDir } from './helpers.js';
 const prices = { a: { input: 2, output: 10 }, b: { input: 4, output: 20 } };
 const folder = () => realpathSync(tempDir());
 
+describe('Claude Code subscription windows from its own cache', () => {
+  const cache = (over: Record<string, unknown> = {}) => ({
+    oauthAccount: { accountUuid: 'account-1', emailAddress: 'someone@example.com' },
+    cachedUsageUtilization: {
+      fetchedAtMs: Date.parse('2026-10-04T14:19:23Z'),
+      accountUuid: 'account-1',
+      utilization: {
+        five_hour: { utilization: 62, resets_at: '2026-10-04T18:30:00.351312+00:00' },
+        seven_day: { utilization: 100, resets_at: '2026-10-06T10:00:00+00:00' },
+        seven_day_opus: { utilization: 40, resets_at: '2026-10-06T10:00:00+00:00' },
+        seven_day_sonnet: null,
+        tangelo: { utilization: 99 },
+      },
+    },
+    ...over,
+  });
+  const read = async (data: unknown) => {
+    const home = tempDir();
+    writeFileSync(join(home, '.claude.json'), JSON.stringify(data));
+    return (await usage({ cwd: folder(), brains: ['claude'], homes: { claude: home }, limit: 0 })).brains[0]!;
+  };
+
+  it('reads the windows Claude Code fetched last, with when it did, and makes no call', async () => {
+    const brain = await read(cache());
+    expect(brain).toMatchObject({
+      limitsSource: 'cache',
+      limitsObservedAt: '2026-10-04T14:19:23.000Z',
+      limitsUnavailable: null,
+    });
+    expect(brain.limits).toEqual([
+      {
+        window: 'five_hour',
+        utilization: 0.62,
+        windowMinutes: 300,
+        resetsAt: Date.parse('2026-10-04T18:30:00Z') / 1000,
+      },
+      {
+        window: 'seven_day',
+        utilization: 1,
+        windowMinutes: 10_080,
+        resetsAt: Date.parse('2026-10-06T10:00:00Z') / 1000,
+      },
+      {
+        window: 'seven_day_opus',
+        utilization: 0.4,
+        windowMinutes: 10_080,
+        resetsAt: Date.parse('2026-10-06T10:00:00Z') / 1000,
+        group: 'Opus',
+      },
+    ]);
+  });
+
+  it('leaves out a cache of another account, and says how to get one when there is none', async () => {
+    const other = await read(cache({ oauthAccount: { accountUuid: 'account-2' } }));
+    expect(other).toMatchObject({
+      limits: null,
+      limitsUnavailable: 'missing',
+      detail: expect.stringContaining('another account'),
+    });
+    const none = await read({ oauthAccount: { accountUuid: 'account-1' } });
+    expect(none).toMatchObject({
+      limits: null,
+      limitsUnavailable: 'missing',
+      detail: expect.stringContaining('/usage'),
+    });
+  });
+});
+
 describe('saved usage', () => {
   it('exports usage and distinguishes unavailable data for every CLI', async () => {
     const home = tempDir();
@@ -31,7 +99,8 @@ describe('saved usage', () => {
     expect(report.brains.map((brain) => brain.brain)).toEqual(['claude', 'codex', 'antigravity', 'opencode']);
     expect(report.brains.every((brain) => brain.limits === null)).toBe(true);
     expect(report.sessions).toEqual([]);
-    expect(report.brains[0]?.limitsUnavailable).toBe('not_requested');
+    // Claude Code has kept no usage of its own here: neither its /usage nor a live call happened.
+    expect(report.brains[0]).toMatchObject({ limitsUnavailable: 'missing', detail: expect.stringContaining('/usage') });
     expect(report.brains[1]?.limitsUnavailable).toBe('missing');
     expect(report.brains[2]?.detail).toContain('/usage');
   });

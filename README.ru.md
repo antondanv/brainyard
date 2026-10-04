@@ -230,7 +230,7 @@ closed claude-1a2b3c4d · resume: brainyard pane start claude --resume 7c919bf9-
 ```console
 $ brainyard usage
 Subscription limits
-  Claude Code  not checked: --live asks with one tiny real call, which may cost
+  Claude Code  5h reset since seen   weekly 100% · resets in 1d 12h   seen 7h ago
   Codex        5h 52% · resets in 2h 36m   weekly 32% · resets in 5d 11h   seen 35m ago
   Antigravity  Gemini Models: weekly 1% · resets in 3d 21h   5h 0% · resets in 1h 27m
                Claude and GPT models: weekly 4% · resets in 3d 21h   5h 2% · resets in 2h 50m
@@ -360,15 +360,16 @@ Code, Codex, Antigravity и OpenCode. Как `sessions()`, исключает he
 
 | CLI | Токены и стоимость сохранённых сессий | Лимиты подписки |
 |---|---|---|
-| Claude Code | Весь транскрипт, каждое сообщение считается один раз по id; оценка по `prices` | `rate_limit_event` при `live: true` |
+| Claude Code | Весь транскрипт, каждое сообщение считается один раз по id; оценка по `prices` | То, что Claude Code сам получил последним (его `/usage`), из `~/.claude.json`; `rate_limit_event` при `live: true` |
 | Codex | Последний накопительный итог rollout; стоимость по модели каждого хода | Самые свежие снимки из всего хранилища аккаунта |
 | Antigravity | Метаданные генераций в `conversations/<id>.db`; оценка по `prices` | `agy -p /usage --output-format json`: недельные и пятичасовые квоты по группам моделей |
 | OpenCode | Сообщения ассистента в `opencode.db` или сохранённые итоги сессии; положительная стоимость от CLI или оценка по `prices` | API OpenCode Go: окна подписки rolling, weekly и monthly |
 
 У окон есть доля `utilization` (`0.95` — 95%), необязательная длительность
 `windowMinutes`, время сброса `resetsAt` в Unix-секундах и `limitId` для отдельных
-квот. У Antigravity также есть `group` и `label`. Рядом — источник (`rollout`, `live`,
-`cli` или `api`) и время наблюдения: старый снимок
+квот. У Antigravity, как и у недельных окон Claude Code по моделям, есть также `group`
+и `label`. Рядом — источник (`rollout`, `live`, `cli`, `api` или `cache`) и время
+наблюдения: старый снимок
 не подтверждает текущее состояние. Лимиты относятся к аккаунту и не зависят от
 выбранной папки или сессии.
 
@@ -382,6 +383,12 @@ Code, Codex, Antigravity и OpenCode. Как `sessions()`, исключает he
 из хранилища; поддерживается `{env:NAME}`. Если ключа или подписки Go нет, возвращается
 причина. `offline: true` отключает оба запроса и читает только хранилища; его нельзя
 совместить с `live: true`.
+
+Claude Code хранит окна, которые получил последними (когда их показывал его `/usage`),
+в своём общем файле — `~/.claude.json` или `.claude.json` внутри `CLAUDE_CONFIG_DIR`:
+`usage()` читает их оттуда бесплатно, вместе со временем получения, а кеш другого
+аккаунта не берёт. Окно, у которого с тех пор прошло время сброса, о текущем
+состоянии ничего не говорит.
 
 `live: true` делает один минимальный изолированный вызов Claude, по умолчанию с
 таймаутом 30 секунд; вызов может стоить денег. Сохранённые разговоры не продолжает.

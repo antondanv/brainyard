@@ -1,4 +1,4 @@
-import { realpathSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -25,7 +25,12 @@ function saved(): { cwd: string; env: Record<string, string> } {
     claudeMessage('msg_1', 'claude-test', 10, 5),
     claudeMessage('msg_2', 'claude-test', 20, 5),
   ]);
-  codexStore(env.CODEX_HOME!, cwd, CODEX_ID, [codexTokens(100, 20, 40), codexLimits(new Date().toISOString(), 23)]);
+  // Windows that reset in the future: a past reset shows as such, not as a share.
+  const soon = Math.floor(Date.now() / 1000);
+  codexStore(env.CODEX_HOME!, cwd, CODEX_ID, [
+    codexTokens(100, 20, 40),
+    codexLimits(new Date().toISOString(), 23, 'codex', [soon + 7200, soon + 5 * 86_400]),
+  ]);
   return { cwd, env };
 }
 
@@ -41,12 +46,14 @@ describe('brainyard usage', () => {
       limitsSource: 'rollout',
       limits: [{ utilization: 0.23, windowMinutes: 300 }, {}],
     });
-    expect(limits.claude.limitsUnavailable).toBe('not_requested');
+    expect(limits.claude.limitsUnavailable).toBe('missing');
     expect(limits.antigravity.limitsUnavailable).toBe('not_requested');
 
     const text = cli(['usage', '--offline', '--cwd', cwd], { env }).stdout;
     expect(text).toMatch(/Codex\s+5h 23%.*weekly 25%/);
-    expect(text).toContain('Claude Code  not checked: --live asks with one tiny real call');
+    expect(text).toContain(
+      'Claude Code  not seen yet: /usage in Claude Code shows them, or --live (one tiny real call)',
+    );
     expect(text).toContain('Antigravity  not checked: --offline');
     expect(text).toMatch(/Claude Code\s+aaaaaaaa\s+\S+\s+Count this session\s+30\s+10\s+.*no price/);
     expect(text).toMatch(/total\s+2 sessions/);
@@ -78,7 +85,13 @@ describe('brainyard usage', () => {
   });
 
   it('--limits asks the CLIs for their quotas without a model call, and shows only them', () => {
-    const env = machine();
+    // The fake agy's report, its reset times moved into the future.
+    const quota = readFileSync(new URL('../../brainyard/test/fixtures/agy-quota.json', import.meta.url), 'utf8');
+    const later = new Date(Date.now() + 3 * 3_600_000).toISOString().replace(/\.\d+Z$/, 'Z');
+    const env = {
+      ...machine(),
+      FAKE_QUOTA_REPORT: quota.replace(/"reset_time": "[^"]+"/g, `"reset_time": "${later}"`),
+    };
     const report = JSON.parse(cli(['usage', '--limits', '--json'], { env }).stdout);
     expect(report.sessions).toEqual([]);
     const limits = Object.fromEntries(report.brains.map((brain: { brain: string }) => [brain.brain, brain]));
@@ -86,7 +99,7 @@ describe('brainyard usage', () => {
     expect(limits.antigravity).toMatchObject({ limitsSource: 'cli' });
     expect(limits.antigravity.limits.length).toBeGreaterThan(1);
     expect(limits.opencode.limitsUnavailable).toBe('missing');
-    expect(limits.claude.limitsUnavailable).toBe('not_requested');
+    expect(limits.claude.limitsUnavailable).toBe('missing');
 
     const text = cli(['usage', 'antigravity', '--limits'], { env }).stdout;
     expect(text).toMatch(/Antigravity\s+Gemini Models: weekly 1%.* 5h 0%/);
