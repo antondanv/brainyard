@@ -85,37 +85,37 @@ npm install @antondanv/brainyard           # только библиотека
 
 ## Командная строка
 
-**Приложение.** `brainyard` в терминале — одно полноэкранное приложение: агенты с лимитами
-подписок; панели — что делает CLI, сколько памяти занимает и сколько молчит; сессии, которые
-работают в других папках; сессии этой папки с токенами и стоимостью. Пока оно открыто, всё
-перечитывается само; платных вызовов приложение не делает.
+**Приложение.** `brainyard` в терминале — одно полноэкранное приложение: карточка каждого
+агента с лимитами подписки полосками (у Claude Code — те, что последним получил его `/usage`);
+панели — что делает CLI, сколько памяти занимает и сколько молчит; сессии, которые работают в
+других папках; сессии этой папки с токенами и стоимостью. Пока оно открыто, всё перечитывается
+само; платных вызовов приложение не делает. Говорит по-английски или по-русски (Настройки).
 
 ```console
 $ brainyard
-Brainyard 0.2.0 · ~/code/app                                                        2 panes · 405 MB
-
-Agents
-  ● Claude Code  2.1.280   ready         signed in with claude.ai, max
-    limits  not checked: brainyard usage --live (one tiny real call)
-  ● Codex        0.153.4   ready         signed in with ChatGPT · default model gpt-6-astra
-    limits  5h 34% · resets in 2h   weekly 92% · resets in 4d 3h   seen 3h ago
-  ● Antigravity  1.2.13    ready         signed in · model list fetched with your account
-    limits  Gemini Models: weekly 1%
-            Claude and GPT models: weekly 40%
-  ● OpenCode     —         not installed → npm install -g opencode-ai
-
-Panes · 2
-› claude-1a2b3c4d  Claude Code  aaaa1111  285 MB  working            active     ~/code/app    auth refactor
-  codex-5e6f7a8b   Codex        bbbb2222  120 MB  waiting: approval  quiet 12m  ~/code/other
-
-Running in other folders · 1
-  Claude Code  cccc3333  3m       ~/code/other  Nightly cleanup bg ● working
-
-Sessions of ~/code/app · 3 · $4.23 + 1 unpriced · 14k in · 38k out · 31M cache
-  Claude Code  aaaa1111  now  1.2k in   34k out  31M cache     $4.21  Auth refactor ● working ▣ claude-1a2b3c4d
-  Claude Code  dddd4444  3h    950 in   120 out                $0.02  Fix the flaky test
-  Codex        eeee5555  2d    12k in  3.4k out             no price  Explain CRDTs
-
+Brainyard 0.2.0  [1 Overview]  2 Wall   3 Sessions   4 Usage   5 Settings      ⚠ 1 waiting · 2 panes
+╭─ Claude Code ────────────────────────── ready ─╮╭─ Codex ──────────────────────────────── ready ─╮
+│ 2.1.280  claude.ai · max                       ││ 0.153.4  ChatGPT                               │
+│ 5h       ███████████████████▊░░░░░░░░░░░░  62% ││ 5h       ██████████▉░░░░░░░░░░░░░░░░░░░░░  34% │
+│ weekly   ████████████████████████████████ 100% ││ weekly   █████████████████████████████▍░░  92% │
+╰────────────────────────────────── seen 7h ago ─╯╰────────────────────────────────── seen 3h ago ─╯
+╭─ Antigravity ────────────────────────── ready ─╮╭─ OpenCode ───────────────────── not installed ─╮
+│ 1.2.13  signed in                              ││ —  npm install -g opencode-ai                  │
+│ Gemini   ▎░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   1% ││                                                │
+│ Claude   ████████████▊░░░░░░░░░░░░░░░░░░░  40% ││                                                │
+╰────────────────────────────────────────────────╯╰────────────────────────────────────────────────╯
+╭─ Panes ─────────────────────────────────────────────────────────────────────── 2 panes · 405 MB ─╮
+│ ▌ ● auth refactor                      Claude Code  working                      active   285 MB │
+│   ● (no label) · ~/code/other          Codex        waiting: approval         quiet 12m   120 MB │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Running in other folders ─────────────────────────────────────────────────────────────────── 1 ─╮
+│   ● Nightly cleanup bg · ~/code/other                  Claude Code      3m  working              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Sessions · ~/code/app ──────────────────────────────────────── 3 sessions · $4.23 · 31M tokens ─╮
+│   ● Auth refactor                   Claude Code     now  ▣ claude-1a2b3c4d        31M      $4.21 │
+│   ○ Fix the flaky test              Claude Code      3h                          1.1k      $0.02 │
+│   ○ Explain CRDTs                   Codex            2d                           15k   no price │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
  Enter go in (Ctrl+Q back) · x close · n new · ? help · q quit
 ```
 
@@ -138,9 +138,10 @@ Enter — в выбранную панель на весь экран, Ctrl+Q �
   токенами по моделям и командой, которой сессию продолжает её собственный CLI.
 - **Использование** — каждое окно подписки полоской, токены и стоимость папки по CLI и сессии,
   потратившие больше всех.
-- **Настройки** — тема (terminal, ocean, ember, forest, contrast, mono), акцент, раскладка стены,
-  звонок и страница при запуске; хранятся в `~/.config/brainyard/app.json`, где `"colors"`
-  принимает свои цвета (`"accent": "#ff8700"` или номер из 256).
+- **Настройки** — язык (английский по умолчанию или русский), тема (terminal, ocean, ember,
+  forest, contrast, mono), акцент, раскладка стены, звонок и страница при запуске; хранятся в
+  `~/.config/brainyard/app.json`, где `"colors"` принимает свои цвета (`"accent": "#ff8700"`
+  или номер из 256).
 
 ```console
 Brainyard 0.2.0   1 Overview  [2 Wall]  3 Sessions   4 Usage   5 Settings      ⚠ 1 waiting · 2 panes
