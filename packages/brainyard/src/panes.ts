@@ -9,6 +9,8 @@
  *   resumable and shows up in `claude --resume`, `codex resume`, agy and OpenCode.
  * - **Cheap to watch**: a screen is one `capture-pane` of the visible grid,
  *   with colours; nothing is read for panes nobody looks at.
+ * - **Copying works**: text selected with the mouse in a full-screen pane goes
+ *   to the system clipboard (`clipboardCommand()`), not only to tmux's buffer.
  * - **Cheap to keep**: `closePane()` ends the CLI; its conversation stays in
  *   its store, and `startPane({ resume })` brings it back. `paneMemory()` says
  *   what each live pane costs, `activityAt` how long it has been quiet.
@@ -29,6 +31,7 @@ import {
   resolveCommand,
   spawnInteractive,
   unsetSessionVarsScript,
+  which,
   withoutSessionVars,
 } from './process.js';
 import type { SessionInfo } from './sessions.js';
@@ -172,6 +175,35 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+/**
+ * What tmux gives a mouse selection to: the system clipboard. Without it, text
+ * selected in a full-screen pane stays in tmux's own buffer, which nothing
+ * outside can paste. `BRAINYARD_COPY_COMMAND` names another command (empty:
+ * none, tmux keeps the text to itself).
+ */
+export function clipboardCommand(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  const own = env.BRAINYARD_COPY_COMMAND;
+  if (own !== undefined) return own.trim() || undefined;
+  // pbcopy reads bytes in the locale's encoding, and the server may have none.
+  if (platform === 'darwin') return which('pbcopy', env) ? 'LC_ALL=en_US.UTF-8 pbcopy' : undefined;
+  if (env.WAYLAND_DISPLAY && which('wl-copy', env)) return 'wl-copy';
+  if (env.DISPLAY && which('xclip', env)) return 'xclip -selection clipboard';
+  if (env.DISPLAY && which('xsel', env)) return 'xsel --clipboard --input';
+  return undefined;
+}
+
+/**
+ * Mouse selections go to the clipboard. On its own: a tmux older than 3.2 has
+ * no `copy-command`, and that must not stop a pane from starting.
+ */
+async function copyToClipboard(t: Tmux): Promise<void> {
+  const command = clipboardCommand(t.env);
+  if (command) await call(t, ['set-option', '-s', 'copy-command', literal(command)]);
+}
+
 /** Whether tmux is there to run panes. */
 export function panesAvailable(settings: PaneSettings = {}): boolean {
   return tmux(settings) !== undefined;
@@ -256,6 +288,7 @@ export async function startPane(options: PaneOptions, settings: PaneSettings = {
   );
   const got = await call(t, args);
   if (!got.ok) throw new BrainyardError('failed', `tmux did not start the pane: ${got.err || 'no reason given'}`);
+  await copyToClipboard(t);
   const result: PaneStart = {
     pane,
     brain: plan.brain,
@@ -485,6 +518,8 @@ export async function attachPane(pane: string, options: { hint?: string } & Pane
     'latest',
   ]);
   if (!style.ok) throw new BrainyardError('failed', `no such pane: ${pane}`);
+  // A server started by an older Brainyard (or by Treeyard on one) copies to the clipboard too.
+  await copyToClipboard(t);
   const child = spawnInteractive(t.command, ['-L', t.socket, '-f', '/dev/null', 'attach-session', '-t', target(pane)], {
     cwd: process.cwd(),
     env: t.env,

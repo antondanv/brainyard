@@ -176,7 +176,9 @@ script that leaves stdin open should pass `--no-stdin`.
 **Sessions and panes.** `sessions --live` shows what runs on the machine right now, in every
 CLI, and what it waits for. A pane is a CLI session in tmux that outlives the terminal: start
 it, read its screen, type into it, take it full screen and close it; the conversation stays
-resumable. A pane is named by its name or the start of its name or session id.
+resumable. A pane is named by its name or the start of its name or session id. Text selected
+with the mouse in a full-screen pane goes to the system clipboard (`pbcopy`, `wl-copy`, `xclip`
+or `xsel`; `BRAINYARD_COPY_COMMAND` names another).
 
 ```console
 $ brainyard sessions --live

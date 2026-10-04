@@ -1,9 +1,12 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   capturePane,
+  clipboardCommand,
   closePane,
   findPaneSession,
   listPanes,
@@ -220,9 +223,60 @@ describe.skipIf(!hasTmux)('panes (real tmux)', () => {
     })();
   });
 
+  it('text selected in a pane goes to the clipboard command, as a mouse selection does', async () => {
+    const copied = join(tempDir(), 'copied.txt');
+    const started = await startPane(
+      {
+        brain: 'claude',
+        cwd: tempDir(),
+        command: FAKE.claude,
+        env: { FAKE_PANE: '1' },
+      },
+      // Never the clipboard of the machine the tests run on.
+      { ...settings, env: { BRAINYARD_COPY_COMMAND: `cat > '${copied}'` } },
+    );
+    await until(
+      () => capturePane(started.pane, settings),
+      (s) => Boolean(s && text(s.lines).includes('fake-claude ready')),
+    );
+    const tmux = (...args: string[]) => spawnSync('tmux', ['-L', socket, '-f', '/dev/null', ...args]);
+    // What a drag does on release: copy-pipe-and-cancel with no command of its own.
+    expect(tmux('show-options', '-s', 'copy-command').stdout.toString()).toContain(copied);
+    tmux('copy-mode', '-t', `=${started.pane}:`);
+    tmux('send-keys', '-t', `=${started.pane}:`, '-X', 'history-top');
+    tmux('send-keys', '-t', `=${started.pane}:`, '-X', 'select-line');
+    tmux('send-keys', '-t', `=${started.pane}:`, '-X', 'copy-pipe-and-cancel');
+    const read = () => {
+      try {
+        return Promise.resolve(readFileSync(copied, 'utf8'));
+      } catch {
+        return Promise.resolve('');
+      }
+    };
+    expect(await until(read, (got) => got.includes('fake-claude ready'))).toContain('fake-claude ready');
+    expect(await closePane(started.pane, settings)).toBe(true);
+  });
+
   it('a pane is never named by prefix: closing one leaves the others', async () => {
     expect(await closePane('claude', settings)).toBe(false);
     expect(await capturePane('claude', settings)).toBeUndefined();
+  });
+});
+
+describe('the clipboard a pane copies to', () => {
+  it('is pbcopy on macOS, a Wayland or X tool elsewhere, or what BRAINYARD_COPY_COMMAND says', () => {
+    const bin = tempDir();
+    for (const tool of ['pbcopy', 'wl-copy', 'xclip']) {
+      spawnSync('sh', ['-c', `printf '#!/bin/sh\n' > '${join(bin, tool)}' && chmod +x '${join(bin, tool)}'`]);
+    }
+    const env = { PATH: bin };
+    expect(clipboardCommand(env, 'darwin')).toBe('LC_ALL=en_US.UTF-8 pbcopy');
+    expect(clipboardCommand({ ...env, WAYLAND_DISPLAY: 'wayland-0' }, 'linux')).toBe('wl-copy');
+    expect(clipboardCommand({ ...env, DISPLAY: ':0' }, 'linux')).toBe('xclip -selection clipboard');
+    // No display, no clipboard: tmux keeps the selection.
+    expect(clipboardCommand(env, 'linux')).toBeUndefined();
+    expect(clipboardCommand({ ...env, BRAINYARD_COPY_COMMAND: 'my-copy' }, 'darwin')).toBe('my-copy');
+    expect(clipboardCommand({ ...env, BRAINYARD_COPY_COMMAND: '' }, 'darwin')).toBeUndefined();
   });
 });
 

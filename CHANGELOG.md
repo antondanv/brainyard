@@ -61,6 +61,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Text selected with the mouse in a full-screen pane goes to the system clipboard (`pbcopy`,
+  `wl-copy`, `xclip` or `xsel`; `BRAINYARD_COPY_COMMAND` names another), not only to tmux's own
+  buffer, where nothing outside could paste it. A server started by an older version gets it on
+  the next attach.
 - Every CLI starts with `PWD` set to the folder it works in. A CLI that takes its folder from
   `PWD` (OpenCode) otherwise worked in the caller's folder.
 - "Cannot connect to API" and "Unable to connect" are `network` failures.
