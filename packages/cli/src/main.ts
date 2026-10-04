@@ -6,18 +6,14 @@
  */
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { parseArgs } from 'node:util';
 
 import {
-  type Access,
   ask,
   askAll,
   BRAIN_IDS,
   BRAINS,
-  type BrainId,
   type BrainStatus,
   BrainyardError,
-  brainId,
   type Catalog,
   clip,
   type McpServer,
@@ -29,13 +25,13 @@ import {
   start,
   status,
 } from '@antondanv/brainyard';
+import { accessArg, brainArg, parse, promptFrom, secondsArg, UsageError } from './args.js';
+import { ago } from './format.js';
 import { feedLine, pad, paint } from './term.js';
 import { VERSION } from './version.js';
 
 const out = paint(process.stdout);
 const err = paint(process.stderr);
-
-class UsageError extends Error {}
 
 const HELP = `${out.bold('brainyard')} ${VERSION} — one interface to Claude Code, Codex, Antigravity and OpenCode
 
@@ -110,56 +106,6 @@ async function main(argv: string[]): Promise<number> {
       if (command.startsWith('-')) return statusCommand(argv);
       throw new UsageError(`unknown command "${command}"`);
   }
-}
-
-function parse<T extends NonNullable<Parameters<typeof parseArgs>[0]>['options']>(args: string[], options: T) {
-  try {
-    return parseArgs({ args, options, allowPositionals: true, strict: true });
-  } catch (error) {
-    throw new UsageError((error as Error).message);
-  }
-}
-
-function brainArg(value: string | undefined): BrainId {
-  if (!value) throw new UsageError(`name a brain: ${BRAIN_IDS.join(', ')}`);
-  try {
-    return brainId(value);
-  } catch (error) {
-    throw new UsageError((error as Error).message);
-  }
-}
-
-function accessArg(value: string | undefined): Access | undefined {
-  if (value === undefined) return undefined;
-  if (value === 'full' || value === 'workspace' || value === 'readonly') return value;
-  throw new UsageError(`--access must be full, workspace or readonly, not "${value}"`);
-}
-
-function secondsArg(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const seconds = Number(value);
-  if (!Number.isFinite(seconds) || seconds <= 0) throw new UsageError(`--timeout wants seconds, not "${value}"`);
-  return seconds * 1000;
-}
-
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return '';
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString('utf8');
-}
-
-/**
- * Prompt from arguments; `-` or none reads stdin; piped stdin plus a prompt
- * become one (as with `codex exec`). Reading stdin waits for EOF, so a script
- * that leaves stdin open should pass `--no-stdin`.
- */
-async function promptFrom(words: string[], useStdin = true): Promise<string> {
-  const joined = words.join(' ').trim();
-  if (joined === '-') return (await readStdin()).trim();
-  const piped = !useStdin || process.stdin.isTTY ? '' : (await readStdin()).trim();
-  if (joined && piped) return `${joined}\n\n${piped}`;
-  return joined || piped;
 }
 
 // ---------------------------------------------------------------------------
@@ -324,14 +270,6 @@ function sessionLine(session: SessionInfo): string {
   const title = session.title ? clip(session.title, 72) : out.dim('(untitled)');
   const bg = session.background ? out.dim(' bg') : '';
   return `${label} ${out.dim(session.id.slice(0, 8))}  ${pad(age, 8)} ${title}${bg}${state}`;
-}
-
-function ago(ms: number): string {
-  const seconds = Math.max(0, (Date.now() - ms) / 1000);
-  if (seconds < 90) return 'now';
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  if (seconds < 86_400) return `${Math.round(seconds / 3600)}h`;
-  return `${Math.round(seconds / 86_400)}d`;
 }
 
 async function openCommand(args: string[]): Promise<number> {
