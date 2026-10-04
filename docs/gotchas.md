@@ -2,7 +2,7 @@
 
 Everything here was found by running the real CLIs, and most of it in production, where a
 failure cost a paid run. Each entry is **symptom → cause → what Brainyard does**. Versions
-checked: Claude Code 2.1.280, Codex 0.153.4, Antigravity 1.2.13.
+checked: Claude Code 2.1.280, Codex 0.153.4, Antigravity 1.2.13, OpenCode 1.18.34.
 
 If you drive these CLIs yourself, this page is the useful part of the library.
 
@@ -20,9 +20,31 @@ limits, and they show up in `ps`.
 **Brainyard.** The prompt always goes to stdin:
 - Claude Code reads it as text on stdin, or as the first stream-json message;
 - Codex gets `-` as the prompt ("read from stdin"), for `exec` and for `exec resume`;
-- Antigravity gets `-p=` (print mode without a positional prompt) plus stream-json input.
+- Antigravity gets `-p=` (print mode without a positional prompt) plus stream-json input;
+- OpenCode gets no message argument, and `run` then reads the prompt from stdin.
 
-A test sends `--- front matter` to all three adapters and asserts it never reaches `argv`.
+A test sends `--- front matter` to every adapter and asserts it never reaches `argv`.
+
+### OpenCode works in PWD, not in its process's folder
+
+**Symptom.** A run started in `./sandbox` wrote its files into the folder the caller was
+started from, and `ask()` picked up that folder's `AGENTS.md`.
+
+**Cause.** OpenCode takes its working folder from the `PWD` variable. A shell sets it on every
+`cd`; a process spawned with another working directory inherits its parent's.
+
+**Brainyard.** Starts every CLI with `PWD` set to the folder it works in. The fake OpenCode
+works in `PWD` too, so a test fails when it is wrong.
+
+### Every OpenCode run paid for a second model call
+
+**Symptom.** A one-word answer took two model calls; the log says `agent=title`.
+
+**Cause.** OpenCode titles a new session with a call of its own (to the provider's small model,
+or the same one when there is none).
+
+**Brainyard.** Passes `--title=` without a value: the session is named after the prompt, and
+the prompt still never appears in `argv`.
 
 ### Codex writes nothing without an explicit sandbox
 
@@ -83,9 +105,9 @@ never runs.
 **Brainyard.** Sends `{"event":"user","message":{"role":"user","content":[{"type":"text","text":…}]}}`.
 Claude Code gets `{"type":"user","message":{…}}`.
 
-### Codex takes no input while it works
+### Codex and OpenCode take no input while they work
 
-`codex exec` reads one prompt and runs. `agent.steerable` is `false`, and `hint()` returns
+`codex exec` and `opencode run` read one prompt and run. `agent.steerable` is `false`, and `hint()` returns
 `false` with a warning event instead of pretending the message arrived. `stop()` still works:
 a process can always be killed.
 
@@ -113,6 +135,49 @@ the result says which), and sometimes after one of its own built-in tools crashe
 conversation: "your last turn ended without a text answer (the CLI refused X); reply with the
 final answer". A new process would not remember what the old one tripped over. One follow-up
 and no more: that is a retry, not a loop. Turn it off with `nudge: false`.
+
+### OpenCode has no final event
+
+**Symptom.** The stream stops and the process exits; nothing says whether the turn finished.
+
+**Cause.** `opencode run` exits once its session is idle. Every step ends with `step_finish`
+and a reason; `tool-calls` means another step follows.
+
+**Brainyard.** A step that finishes for any other reason ends the turn. A process that exits
+after `tool-calls` was cut off, whatever its exit code.
+
+### A refused tool ends OpenCode's turn without a word
+
+**Symptom.** A run that tried to write outside its folder ended with exit code 0, no text, and
+the rest of the task undone.
+
+**Cause.** `opencode run` answers every permission question with "reject", and a rejection
+stops the agent loop.
+
+**Brainyard.** Turns on `experimental.continue_loop_on_deny`: the agent gets the refusal as a
+tool error and goes on to answer. The refused tools are in `deniedTools`.
+
+### An unknown OpenCode model is an "Unexpected server error"
+
+**Symptom.** `--model sber/No-Such` ends with `UnknownError: Unexpected server error. Check
+server logs for details.` and exit code 1.
+
+**Brainyard.** OpenCode runs only the models `opencode models` lists, so its catalog is
+complete: an unknown name is refused before the start, with the list to pick from. Other errors
+keep the reference into OpenCode's log: `(OpenCode log: err_…)`.
+
+### A looping model is not stopped
+
+**Symptom.** A model called the same failing tool 243 times in five minutes, 1.8M input tokens,
+until the process was killed.
+
+**Cause.** `opencode run` has no step limit, and its doom-loop guard did not fire for calls
+that kept failing.
+
+**Brainyard.** No default limit, as with every CLI: a run killed halfway is paid for in full.
+Set `timeoutMs`. A step limit goes in through `OPENCODE_CONFIG_CONTENT`
+(`{"agent":{"build":{"steps":12}}}`), which Brainyard merges with its own settings.
+`npm run live` gives every run five minutes.
 
 ### A usage limit looks like a rate limit
 
@@ -158,6 +223,12 @@ plus `--effort`.
 **Brainyard.** Folds variants into families, fills in the default effort when a family needs
 one, and turns a variant name into family + effort.
 
+### OpenCode: effort is a variant
+
+`opencode models --verbose` prints every model as JSON; its `variants` are the reasoning
+levels, passed as `--variant`. A model without variants takes no effort, and Brainyard refuses
+one instead of letting it be ignored.
+
 ### Model lists change under you
 
 Codex fetches its catalog from the server: between two calls a model disappeared and a hidden
@@ -172,16 +243,21 @@ an hour. When a CLI does not answer, a built-in list is used and marked `source:
 - Codex's `input_tokens` includes cached input. Antigravity's `usage` is cumulative across
   the turns of one process, so the last result is the total. Adding them up would count the
   first turn twice.
+- OpenCode reports dollars per step (`step_finish.cost`), priced from its model catalog. A
+  provider without prices (a custom one, a local proxy) reports 0: Brainyard takes that as
+  unknown (`costUsd: null`), not free. Every step reports only its own tokens, so they add up;
+  reasoning is counted apart from output there, and Brainyard adds it to `outputTokens`.
 
 ## Permissions and sandboxes
 
-### `workspace` means three different mechanisms
+### `workspace` means four different mechanisms
 
 | | How `workspace` is enforced | Checked |
 |---|---|---|
 | Claude Code | `--permission-mode acceptEdits` plus its own sandbox (`sandbox.enabled`, `autoAllowBashIfSandboxed`) | code runs; a write to `~` fails with "operation not permitted" |
 | Codex | `--sandbox workspace-write` | code runs; the write outside fails |
 | Antigravity | `--mode accept-edits --sandbox` | edits work; its sandbox refuses most commands; the write outside fails |
+| OpenCode | `external_directory: deny`, and the shell off | edits inside work; a write outside is refused |
 
 Two findings behind this table:
 - `acceptEdits` alone in Claude Code approves file edits and file-writing commands, but
@@ -189,6 +265,24 @@ Two findings behind this table:
   sandbox is what makes `workspace` useful.
 - Antigravity's `accept-edits` alone let a command write to the home directory. Its
   `--sandbox` stops that, at the cost of refusing many commands.
+- OpenCode has no sandbox. With its shell on, `echo x > ~/file` and the same with an absolute
+  path went through: its folder check covers the paths of file tools, not where a command
+  writes. So `workspace` turns the OpenCode shell off, and says so in a warning.
+
+### OpenCode Zen's free tier wants OpenCode's own tools
+
+**Symptom.** With a free `opencode/…` model, `ask()` and every `readonly` or `workspace` run
+fail at once: `403 Error from provider (Console): OpenCode's free tier can only be used from
+within OpenCode`. Full-access runs work.
+
+**Cause.** Zen refuses a request that lacks OpenCode's tools. Taking away `edit` and `bash`
+(or all of them, for an answer) is enough to trip it.
+
+**Brainyard.** For an `opencode/` model, or when the default model is unknown, a tool that is
+off stays listed with an `ask` rule, and `run` answers every such question with no. Other
+providers have the tool taken away (`deny`), which is cheaper: an answer without tool
+definitions costs 0.2k tokens instead of 6k. With full access `--auto` would approve the
+question, so there a switch always takes the tool away.
 
 ### Codex asks for approval of every MCP call
 
@@ -207,6 +301,8 @@ lifts approval for those servers only, not for the sandbox.
   interactive CLI). The shell cannot be switched off, only sandboxed, so `shell: false`
   downgrades full access to `workspace-write` and says so.
 - Antigravity: no switch for either. When you ask for one, you get a warning, not silence.
+- OpenCode: permissions by tool name in `OPENCODE_PERMISSION` (`webfetch`, `websearch`,
+  `codesearch`, `bash`: `deny`). A denied tool is taken out of the agent's tool list.
 
 ## MCP servers
 
@@ -218,6 +314,9 @@ lifts approval for those servers only, not for the sandbox.
   `--add-dir <cwd>`. Without `--add-dir` print mode loads no plugins. Brainyard removes the
   folder afterwards (the server's `env` may hold secrets), never overwrites a plugin it did not
   create, and does not touch `~/.gemini`.
+- **OpenCode:** `OPENCODE_CONFIG_CONTENT` with `mcp.<name> = {type: "local", command: [cmd,
+  …args], environment}`: nothing on disk. Its tools are named `<server>_<tool>` and need no
+  approval.
 - **Claude Code reports `pending` for a server that is still starting.** That is not a
   failure. Only `failed`, `error`, `disconnected` and `needs-auth` produce a warning. A failed
   server does deserve one: the agent will not say its tools are gone, it will just do worse.
@@ -229,6 +328,11 @@ servers, and they silently become part of the prompt. `ask()` runs in a fresh em
 with `--safe-mode`, `--strict-mcp-config`, its own `--system-prompt` instead of the agent
 persona, and `--tools ""` unless you allow web or more access. Tool definitions are the bulk of
 the prompt, so a no-tools ask with Haiku costs a fraction of a cent ($0.0009–0.0018 in our runs).
+
+OpenCode answers as an agent of its own (`--agent brainyard-answer`, defined in
+`OPENCODE_CONFIG_CONTENT`): its prompt replaces the coding persona, `readonly` denies every
+tool, and `OPENCODE_DISABLE_CLAUDE_CODE=1` keeps `~/.claude/CLAUDE.md` and Claude Code's skills
+out (OpenCode reads them too). A one-word answer went from 8.7k tokens to 0.2k.
 
 ## Reading the stream
 
@@ -242,5 +346,15 @@ the prompt, so a no-tools ask with Haiku costs a fraction of a cent ($0.0009–0
 - **Antigravity** reads its own notes (`~/.gemini/antigravity-cli/…`) mid-run. Those reads
   stay in the stream with `feed: false`.
 - **Codex** wraps commands in `/bin/zsh -lc '…'`, and the feed shows the command inside.
+- **OpenCode** sends a tool call once, when it has finished, with its result. Subagents work in
+  sessions of their own: the stream carries the `task` call, not their parts or their tokens,
+  which stay in their sessions in `opencode.db`.
 - **One unreadable line must not cost the run.** A line that is not JSON, or an event the
   parser trips over, becomes a `warning` with `feed: false`, and reading goes on.
+
+## Sessions
+
+- **OpenCode** keeps its sessions in `~/.local/share/opencode/opencode.db`, shared with its
+  desktop app. `opencode run` gives a session rules that keep questions out
+  (`plan_exit: deny`), the TUI none: that is how headless runs are told apart. Until a title is
+  generated a session is called `New session - <time>`, and the first prompt says more.

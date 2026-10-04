@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- OpenCode as the fourth CLI, through `opencode run --format json`: `status()`, `models()`,
+  `ask()`, `start()` / `run()`, `sessions()` and `liveSessions()`, `open()` and panes.
+  Permissions, MCP servers and the one-shot answer agent go in through the environment;
+  nothing is written to the project or the user's config.
+- `parseOpencodeModels()` and `opencodeHome()`.
+- `Catalog.complete`: the CLI runs no model outside its list (OpenCode), so an unknown name is
+  refused before the start.
+
+### Changed
+
+- `BrainId` and `BRAIN_IDS` include `'opencode'`. Code with an exhaustive
+  `Record<BrainId, …>` needs an entry for it.
+- `sessions()` leaves out headless runs that are working right now unless `headless: true`, as
+  it already did with saved ones.
+- A session id may contain `_` (OpenCode's ids are `ses_…`).
+
+### Fixed
+
+- Every CLI starts with `PWD` set to the folder it works in. A CLI that takes its folder from
+  `PWD` (OpenCode) otherwise worked in the caller's folder.
+- "Cannot connect to API" and "Unable to connect" are `network` failures.
+
 ## [0.1.0] - 2026-09-30
 
 First public release.

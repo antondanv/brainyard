@@ -1,11 +1,12 @@
 {
   "name": "@antondanv/brainyard-cli",
   "version": "0.1.0",
-  "description": "The brainyard command for Claude Code, Codex and Antigravity: status, models, asks, agent runs, sessions and a local dashboard, built on @antondanv/brainyard.",
+  "description": "The brainyard command for Claude Code, Codex, Antigravity and OpenCode: status, models, asks, agent runs, sessions and a local dashboard, built on @antondanv/brainyard.",
   "keywords": [
     "claude-code",
     "codex",
     "antigravity",
+    "opencode",
     "agent",
     "agents",
     "cli",

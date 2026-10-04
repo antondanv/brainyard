@@ -4,7 +4,7 @@
 
 # Brainyard
 
-**One interface to the coding agents you already have: Claude Code, Codex and Antigravity.**
+**One interface to the coding agents you already have: Claude Code, Codex, Antigravity and OpenCode.**
 
 See which are installed and signed in, ask them one-shot questions, or run an agent in a folder
 and watch a live, human-readable feed of what it does. From the terminal, from TypeScript, or
@@ -24,7 +24,7 @@ from a local dashboard.
 
 ## Why
 
-Claude Code, Codex and Antigravity are all excellent headless agents, and all three speak a
+Claude Code, Codex, Antigravity and OpenCode are all excellent headless agents, and each speaks a
 different dialect: different flags, different stream formats, different ways to resume a
 session, pass an MCP server, pick an effort level or report a usage limit. Each also has quirks
 that only show up in real runs: a prompt starting with `---` read as a command-line option, a
@@ -32,7 +32,7 @@ CLI that never exits because its stdin is still open, a turn that ends silently 
 tool.
 
 Brainyard gives them one API. The same options, the same events and the same errors for all
-three, with the workarounds built in. It drives the CLIs you installed with your own accounts.
+of them, with the workarounds built in. It drives the CLIs you installed with your own accounts.
 It runs no service, calls no model API and holds no keys.
 
 It was extracted from a production system that runs all three CLIs every day. Most of the
@@ -76,6 +76,7 @@ You need Node.js 22+ and at least one agent CLI:
 | Claude Code | `npm install -g @anthropic-ai/claude-code` | run `claude` once |
 | Codex | `npm install -g @openai/codex` | `codex login` |
 | Antigravity | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | run `agy` once |
+| OpenCode | `npm install -g opencode-ai` | `opencode auth login` for a provider (its free models need none) |
 
 ## Command line
 
@@ -86,8 +87,9 @@ Brainyard 0.1.0
   ● Claude Code  2.1.280   ready         signed in with claude.ai, pro
   ● Codex        0.153.4   ready         signed in with ChatGPT · default model gpt-6-astra
   ● Antigravity  1.2.13    ready         signed in · model list fetched with your account
+  ● OpenCode     1.18.34   ready         signed in with opencode, sber · default model sber/GigaChat-3-Pro
 
-  3 of 3 ready · 3.6s · prove each with a real call: brainyard status --live
+  4 of 4 ready · 3.6s · prove each with a real call: brainyard status --live
 ```
 
 **Ask.** The answer goes to stdout and the details to stderr, so pipes work as they look:
@@ -134,7 +136,7 @@ script that leaves stdin open should pass `--no-stdin`.
 | `brainyard run <brain> <prompt>` | An agent with a live feed (`--cwd`, `--resume`, `--access`, `--mcp`, `--no-web`, `--json`) |
 | `brainyard ui` | The dashboard on `http://127.0.0.1:4747` |
 
-Brains are `claude`, `codex` and `antigravity` (alias `agy`). `brainyard help` lists every flag.
+Brains are `claude`, `codex`, `antigravity` (alias `agy`) and `opencode`. `brainyard help` lists every flag.
 
 ## Library
 
@@ -142,7 +144,7 @@ Brains are `claude`, `codex` and `antigravity` (alias `agy`). `brainyard help` l
 import { ask, run, start, status } from '@antondanv/brainyard';
 
 // Who is ready? Free checks; `live: true` adds a one-word call to each.
-const { ready } = await status(); // ['claude', 'codex', 'antigravity']
+const { ready } = await status(); // ['claude', 'codex', 'antigravity', 'opencode']
 
 // One prompt, one answer.
 const { text, costUsd } = await ask('codex', 'One-line summary of RFC 9110?', { effort: 'low' });
@@ -211,7 +213,7 @@ what the CLI persists in its rollout.
 
 | Option | Default | |
 |---|---|---|
-| `brain` | | `claude`, `codex` or `antigravity` |
+| `brain` | | `claude`, `codex`, `antigravity` or `opencode` |
 | `prompt` | | Sent on stdin, never as an argument |
 | `cwd` | `process.cwd()` | Where the agent works (`ask()`: a fresh temporary folder) |
 | `model`, `effort` | the CLI's | Checked against the CLI's catalog before the run |
@@ -229,11 +231,11 @@ what the CLI persists in its rollout.
 A headless agent has nobody to ask for permission, so a tool that needs approval is simply
 refused. Pick the level up front:
 
-| `access` | Claude Code | Codex | Antigravity |
-|---|---|---|---|
-| `full` | every tool, no prompts | every tool, no sandbox | every tool, no prompts |
-| `workspace` | edits and commands in its sandbox, confined to `cwd` | `workspace-write` sandbox | edits; its sandbox refuses most commands |
-| `readonly` | reads and searches only | `read-only` sandbox | plan mode: writes refused |
+| `access` | Claude Code | Codex | Antigravity | OpenCode |
+|---|---|---|---|---|
+| `full` | every tool, no prompts | every tool, no sandbox | every tool, no prompts | every tool; `--auto` approves paths outside `cwd` |
+| `workspace` | edits and commands in its sandbox, confined to `cwd` | `workspace-write` sandbox | edits; its sandbox refuses most commands | edits inside `cwd`; no shell, since it has no sandbox |
+| `readonly` | reads and searches only | `read-only` sandbox | plan mode: writes refused | edits and shell refused |
 
 Checked with real runs on every CLI: in `workspace`, a file inside `cwd` gets written and a
 write to the home directory fails. In `readonly`, nothing gets written. See
@@ -259,16 +261,16 @@ not news (a reasoning block, a successful tool result).
 
 ### What each CLI can do
 
-| | Claude Code | Codex | Antigravity |
-|---|:-:|:-:|:-:|
-| Messages while it works (`hint`) | ✓ | — | ✓ |
-| Resume a session | ✓ | ✓ | ✓ |
-| MCP servers per run | ✓ | ✓ | ✓ |
-| Reports dollar cost | ✓ | tokens only | tokens only |
-| Lists its models | aliases | ✓ | ✓ |
-| Web can be switched off | ✓ | ✓ | — (warns) |
-| Shell can be switched off | ✓ | sandboxed instead | — (warns) |
-| Subscription window usage | ✓ | — | — |
+| | Claude Code | Codex | Antigravity | OpenCode |
+|---|:-:|:-:|:-:|:-:|
+| Messages while it works (`hint`) | ✓ | — | ✓ | — |
+| Resume a session | ✓ | ✓ | ✓ | ✓ |
+| MCP servers per run | ✓ | ✓ | ✓ | ✓ |
+| Reports dollar cost | ✓ | tokens only | tokens only | ✓ where the provider has prices |
+| Lists its models | aliases | ✓ | ✓ | ✓ |
+| Web can be switched off | ✓ | ✓ | — (warns) | ✓ |
+| Shell can be switched off | ✓ | sandboxed instead | — (warns) | ✓ |
+| Subscription window usage | ✓ | — | — | — |
 
 An option a CLI cannot honour is never dropped silently: it comes back as a `warning` event and
 in `result.warnings`.
@@ -295,7 +297,7 @@ A few of the things Brainyard handles so you don't have to. The full list, with 
 fixes, is in [`docs/gotchas.md`](docs/gotchas.md).
 
 - **Prompts never go on the command line.** Claude Code's `-p` is a boolean flag, so a prompt
-  starting with `---` becomes `error: unknown option`. All three get the prompt on stdin.
+  starting with `---` becomes `error: unknown option`. Every CLI gets the prompt on stdin.
 - **stdin is closed exactly when the turn ends.** With stream-json input the CLI treats stdin
   as a conversation and waits for the next message forever. The finished work would hang until
   killed.
@@ -307,15 +309,20 @@ fixes, is in [`docs/gotchas.md`](docs/gotchas.md).
   without a word after a refused tool. A new process would not remember what it tripped over.
 - **A usage limit is not a 429.** One is retried in seconds, the other resets in hours, and
   the CLI says when. Brainyard keeps that time for you.
+- **OpenCode has no final event, and a refused tool ends its turn without a word.** The reason
+  the last step finished tells a finished turn from a cut-off one, and Brainyard has the agent
+  hear a refusal out and answer.
 
 ## How it is tested
 
-- **144 tests** run the real code against fake `claude`, `codex` and `agy` executables that
-  speak each dialect. Like the real CLIs, the fakes never exit while stdin is open, so a runner
+- **237 tests** run the real code against fake `claude`, `codex`, `agy` and `opencode`
+  executables that speak each dialect. Like the real CLIs, the fakes never exit while stdin is open, so a runner
   that forgets to close it hangs the test instead of passing it.
 - **`npm run live`** runs every check against the real CLIs with the cheapest models: ask, a
   prompt starting with dashes, an agent run, a hint, resume, MCP, and the access matrix. Last
   run: Claude Code 2.1.280, Codex 0.153.4, Antigravity 1.2.13, all 21 checks passed for about $0.20.
+  OpenCode 1.18.34 passed all 7 on GigaChat 3 Pro and on the free `opencode/big-pickle`
+  (`BRAINYARD_LIVE_OPENCODE_MODEL` picks the model).
 
 ## FAQ
 
@@ -332,8 +339,8 @@ inside a container.
 **Windows?** Not tested yet. Batch shims (`claude.cmd`) are handled, but the CI runs on Linux
 and macOS.
 
-**What about Gemini CLI, Cursor, opencode…?** Not yet. Adding a CLI means an adapter plus a
-live check, and a CLI goes in once it passes one.
+**What about Gemini CLI or Cursor?** Not yet. Adding a CLI means an adapter plus a live check,
+and a CLI goes in once it passes one. OpenCode went in that way.
 
 ## Contributing
 

@@ -1,11 +1,12 @@
 {
   "name": "@antondanv/brainyard",
   "version": "0.1.0",
-  "description": "One API for agentic coding CLIs — Claude Code, Codex and Antigravity: status checks, one-shot asks, streamed agent runs with steering, sessions, models and MCP.",
+  "description": "One API for agentic coding CLIs — Claude Code, Codex, Antigravity and OpenCode: status checks, one-shot asks, streamed agent runs with steering, sessions, models and MCP.",
   "keywords": [
     "claude-code",
     "codex",
     "antigravity",
+    "opencode",
     "agent",
     "agents",
     "cli",

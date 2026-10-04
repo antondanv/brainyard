@@ -1,6 +1,6 @@
 # Brainyard
 
-Один слой над CLI агентов — Claude Code, Codex и Antigravity: статус, разовые вопросы,
+Один слой над CLI агентов — Claude Code, Codex, Antigravity и OpenCode: статус, разовые вопросы,
 запуск в папке с живой лентой событий, сессии, к которым человек возвращается (`open`,
 `sessions`), и панели tmux, которые переживают программу. Из терминала, из TypeScript
 и из локального дашборда. Два пакета в одном репозитории (npm workspaces, одна версия):
@@ -31,7 +31,7 @@ npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же д
   - `src/brains/` — адаптер на каждый CLI: как вызвать, как читать поток.
   - `src/run.ts`, `ask.ts`, `status.ts`, `catalog.ts` — запуск, разовые ответы, статус, модели.
   - `src/sessions.ts`, `open.ts`, `panes.ts` — сохранённые сессии, интерактивный CLI, панели tmux.
-  - `test/fixtures/` — фейковые claude, codex и agy; `test/helpers.ts` — общие и для тестов CLI.
+  - `test/fixtures/` — фейковые claude, codex, agy и opencode; `test/helpers.ts` — общие и для тестов CLI.
 - `packages/cli/` — `@antondanv/brainyard-cli`: `src/main.ts` — команда `brainyard`,
   `src/ui/` — дашборд и HTTP API. API берёт только из `@antondanv/brainyard`, как внешний
   пользователь; чего не хватает — экспортируй из `packages/brainyard/src/index.ts` осознанно.
