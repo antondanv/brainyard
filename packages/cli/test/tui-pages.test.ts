@@ -39,16 +39,14 @@ describe('the sessions page', () => {
 
   it('lists what runs elsewhere and this folder’s sessions, with a card for the selected one', () => {
     const lines = trimmed(render(state, plain));
-    expect(lines[2]).toBe('Sessions · 4  / filter');
-    expect(lines[3]).toMatch(
-      /^› Claude Code {2}cccc3333 {2}3m +\/work\/other {2}Nightly cleanup bg ● working +│ Nightly cleanup$/,
-    );
-    expect(lines[4]).toMatch(
-      /^ {2}Claude Code {2}aaaa1111 {2}now +\/work\/app +Auth refactor ● working ▣ claud… │ Claude Code cccc3333-/,
-    );
-    const card = lines.slice(3).map((line) => line.split('│ ')[1] ?? '');
-    expect(card).toContain('folder   /work/other');
-    expect(card).toContain('now      ● working');
+    expect(lines[1]).toMatch(/^╭─ Sessions {2}\/ filter ─+ 4 ─╮╭─ Nightly cleanup bg ─+╮$/);
+    expect(lines[2]).toMatch(/^│ ▌ ● Nightly cleanup bg… {2}Claude Code {6}3m {2}working +││ Claude Code {2}cccc3333-/);
+    expect(lines[3]).toMatch(/^│ {3}● Auth refactor +Claude Code {5}now {2}▣ claude-1a2b3c4d +31M ││/);
+    // The card: the session's place, its times, what it does, how to stop it, how to go on with it elsewhere.
+    const card = lines.slice(2).map((line) => (line.split('││ ')[1] ?? '').replace(/ *│$/, ''));
+    expect(card).toContain('folder     /work/other');
+    expect(card).toContain('updated    3m ago');
+    expect(card).toContain('now        ● working');
     expect(card).toContain('s stop it: the conversation stays');
     expect(card).toContain('claude --resume cccc3333-0000-4000-8000-000000000003');
     for (const line of render(state, palette(true))) expect(cells(line)).toBe(140);
@@ -61,9 +59,10 @@ describe('the sessions page', () => {
       { kind: 'start', brain: 'claude', cwd: HERE, resume: 'dddd4444-0000-4000-8000-000000000004' },
     ]);
     const [inPane] = press(state, 'down');
-    const card = trimmed(render(inPane, plain)).map((line) => line.split('│ ')[1] ?? '');
-    expect(card).toContain('tokens   1.2k in · 34k out · 31M cache');
-    expect(card).toContain('cost     $4.21');
+    const card = trimmed(render(inPane, plain)).map((line) => (line.split('││ ')[1] ?? '').replace(/ *│$/, ''));
+    expect(card).toContain('used       1.2k in · 34k out · 31M cache');
+    expect(card).toContain('cost       $4.21');
+    expect(card).toContain('Enter into its pane · x close the pane');
     expect(press(inPane, 'enter')[1]).toEqual([{ kind: 'attach', pane: 'claude-1a2b3c4d' }]);
     expect(press(inPane, 'x')[0].dialog).toMatchObject({ effect: { kind: 'close', pane: 'claude-1a2b3c4d' } });
     expect(press(state, 's')[0].dialog).toMatchObject({ effect: { kind: 'stop', sessionId: LIVE[2]!.id } });
@@ -78,10 +77,10 @@ describe('the sessions page', () => {
     const [typed] = update({ ...editing, list: { ...editing.list, filter: '' } }, { kind: 'input', data: 'flaky\r' });
     expect(typed.list).toMatchObject({ filter: 'flaky', editing: false });
     const lines = trimmed(render(typed, plain));
-    expect(lines[2]).toBe('Sessions · 1  / flaky');
-    expect(lines[3]).toContain('Fix the flaky test');
+    expect(lines[1]).toMatch(/^╭─ Sessions {2}\/ flaky ─+ 1 ─╮/);
+    expect(lines[2]).toContain('Fix the flaky test');
     const [none] = update(editing, { kind: 'input', data: 'zzz' });
-    expect(trimmed(render(none, plain))[3]).toContain('nothing fits the filter · Esc clears it');
+    expect(trimmed(render(none, plain))[2]).toContain('nothing fits the filter · Esc clears it');
     const [cleared] = press(typed, 'esc');
     expect(cleared.list.filter).toBe('');
     expect(press(editing, 'x', 'backspace')[0].list.filter).toBe('');
@@ -91,24 +90,27 @@ describe('the sessions page', () => {
 describe('the usage page', () => {
   it('draws every window as a bar, then the folder’s use by CLI and the sessions that used most', () => {
     const lines = trimmed(render(world({ page: 'usage', width: 110, height: 30 }), plain));
-    expect(lines.slice(2, 10)).toEqual([
-      'Subscription limits',
-      '  Claude Code  not checked: brainyard usage --live (one tiny real call)',
-      '  Codex                        5h      ████████▏░░░░░░░░░░░░░░░  34%  resets in 2h',
-      '                               weekly  ██████████████████████░░  92%  resets in 4d 3h',
-      '  Antigravity  Gemini          weekly  ▏░░░░░░░░░░░░░░░░░░░░░░░   1%',
-      '               Claude and GPT  weekly  █████████▌░░░░░░░░░░░░░░  40%',
-      '  OpenCode     not installed',
-      '',
+    const inside = (from: number, to: number) =>
+      lines.slice(from, to).map((line) => line.replace(/^│ /, '').replace(/ *│$/, ''));
+    expect(lines[1]).toMatch(/^╭─ Subscription limits ─+╮$/);
+    expect(inside(2, 9)).toEqual([
+      'Claude Code                  5h      ██████████████▉░░░░░░░░░   62%  resets in 1h      seen 7h ago',
+      '                             weekly  ████████████████████████  100%  resets in 1d 12h',
+      'Codex                        5h      ████████▏░░░░░░░░░░░░░░░   34%  resets in 2h      seen 3h ago',
+      '                             weekly  ██████████████████████░░   92%  resets in 4d 3h',
+      'Antigravity  Gemini          weekly  ▏░░░░░░░░░░░░░░░░░░░░░░░    1%',
+      '             Claude and GPT  weekly  █████████▌░░░░░░░░░░░░░░   40%',
+      'OpenCode     not installed',
     ]);
-    expect(lines.slice(10, 15)).toEqual([
-      'Sessions of /work/app · by CLI',
-      '               sessions    in   out  cache   cost',
-      '  Claude Code         2  2.1k   34k    31M  $4.23',
-      '  Codex               1   12k  3.4k      0         1 unpriced',
-      '  total               3   14k   38k    31M  $4.23  1 unpriced',
+    expect(lines[10]).toMatch(/^╭─ Sessions of \/work\/app ─+ by CLI ─╮$/);
+    expect(inside(11, 15)).toEqual([
+      '             sessions    in   out  cache   cost',
+      'Claude Code         2  2.1k   34k    31M  $4.23',
+      'Codex               1   12k  3.4k      0         1 unpriced',
+      'total               3   14k   38k    31M  $4.23  1 unpriced',
     ]);
-    expect(lines[17]).toMatch(/^ {2}Claude Code {2}aaaa1111 +31M +\$4\.21 {2}Auth refactor$/);
+    expect(lines[16]).toMatch(/^╭─ Most tokens ─+╮$/);
+    expect(inside(17, 18)[0]).toMatch(/^○ Auth refactor {7}Claude Code {3}31M {5}\$4\.21$/);
   });
 
   it('fills a bar in eighths of a cell, green, then yellow from 70%, red from 90%', () => {
@@ -128,24 +130,33 @@ describe('the settings page', () => {
 
   it('shows each setting with its values, the chosen one marked, and a preview', () => {
     const lines = trimmed(render({ ...state, settingsFile: '~/.config/brainyard/app.json' }, plain));
-    expect(lines[2]).toBe('Settings · kept in ~/.config/brainyard/app.json');
-    expect(lines[3]).toBe('› Theme                     [terminal]  ocean   ember   forest   contrast   mono');
-    expect(lines[5]).toBe('  Wall layout               [grid]  main   columns');
-    expect(lines[6]).toBe('  Bell when an agent waits  [on]  off');
-    expect(lines.join('\n')).toContain('Preview');
+    const inside = lines.map((line) => line.replace(/^│ /, '').replace(/ *│$/, ''));
+    expect(lines[1]).toMatch(/^╭─ Settings ─+ kept in ~\/\.config\/brainyard\/app\.json ─╮$/);
+    expect(inside.slice(2, 8)).toEqual([
+      '▌ Language                      [English]  Русский',
+      '  Theme                         [terminal]  ocean   ember   forest   contrast   mono',
+      '  Accent                        ◂ [theme] ▸  1/9',
+      '  Wall layout                   [grid]  main   columns',
+      '  Bell when an agent waits      [on]  off',
+      '  Open on                       [Overview]  Wall   Sessions   Usage   Settings',
+    ]);
+    expect(lines[9]).toMatch(/^╭─ Preview ─+╮$/);
   });
 
   it('←→ change a setting and keep it; the layout goes to the wall too', () => {
-    const [ocean, saved] = press(state, 'right');
+    const [russian, kept] = press(state, 'right');
+    expect(russian.settings.language).toBe('ru');
+    expect(kept).toEqual([{ kind: 'save', settings: { ...DEFAULT_SETTINGS, language: 'ru' } }]);
+    const [ocean, saved] = press(state, 'down', 'right');
     expect(ocean.settings.theme).toBe('ocean');
     expect(saved).toEqual([{ kind: 'save', settings: { ...DEFAULT_SETTINGS, theme: 'ocean' } }]);
-    expect(press(state, 'left')[0].settings.theme).toBe('mono');
-    const [main] = press(state, 'down', 'down', 'right');
+    expect(press(state, 'down', 'left')[0].settings.theme).toBe('mono');
+    const [main] = press(state, 'down', 'down', 'down', 'right');
     expect(main.settings.layout).toBe('main');
     expect(main.wall.layout).toBe('main');
-    const [quiet] = press(state, 'down', 'down', 'down', 'enter');
+    const [quiet] = press(state, 'down', 'down', 'down', 'down', 'enter');
     expect(quiet.settings.bell).toBe(false);
-    expect(press(state, 'down', 'down', 'down', 'down', 'right')[0].settings.start).toBe('wall');
+    expect(press(state, 'down', 'down', 'down', 'down', 'down', 'right')[0].settings.start).toBe('wall');
   });
 
   it('a theme repaints the frame: its own colours, an accent, your own colours from the file', () => {

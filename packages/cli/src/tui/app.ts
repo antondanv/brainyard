@@ -33,7 +33,7 @@ import {
 import type { PaneRow } from '../panes.js';
 import { type Paint, palette } from '../term.js';
 import { type Settings, saveSettings, themeOf } from './settings.js';
-import { type Effect, type Event, initialState, type Source, type State } from './state.js';
+import { type Effect, type Event, initialState, type Source, type State, tr } from './state.js';
 import { update } from './update.js';
 import { bodyHeight, render } from './view.js';
 import { tiles } from './wall.js';
@@ -272,7 +272,11 @@ export function startApp(options: AppOptions): App {
         return attach(effect.pane);
       case 'start': {
         const label = BRAINS[effect.brain].label;
-        dispatch({ kind: 'busy', text: effect.resume ? `continuing in ${label}…` : `starting ${label}…` });
+        const t = tr(state);
+        dispatch({
+          kind: 'busy',
+          text: effect.resume ? t('continuing in {cli}…', { cli: label }) : t('starting {cli}…', { cli: label }),
+        });
         let started: PaneStart;
         try {
           started = await sources.startPane({
@@ -315,7 +319,8 @@ export function startApp(options: AppOptions): App {
         try {
           sources.saveSettings(effect.settings);
         } catch (error) {
-          dispatch({ kind: 'note', note: { text: `settings not kept: ${messageOf(error)}`, tone: 'error' } });
+          const text = tr(state)('settings not kept: {reason}', { reason: messageOf(error) });
+          dispatch({ kind: 'note', note: { text, tone: 'error' } });
         }
         return;
       case 'close': {
@@ -324,8 +329,13 @@ export function startApp(options: AppOptions): App {
           dispatch({
             kind: 'note',
             note: closed
-              ? { text: `closed ${effect.pane} · what was said in it stays: r continues it from Sessions`, tone: 'ok' }
-              : { text: `${effect.pane} has already ended`, tone: 'info' },
+              ? {
+                  text: tr(state)('closed {pane} · what was said in it stays: r continues it from Sessions', {
+                    pane: effect.pane,
+                  }),
+                  tone: 'ok',
+                }
+              : { text: tr(state)('{pane} has already ended', { pane: effect.pane }), tone: 'info' },
           });
         } catch (error) {
           dispatch({ kind: 'note', note: { text: messageOf(error), tone: 'error' } });
@@ -335,7 +345,7 @@ export function startApp(options: AppOptions): App {
       }
       case 'stop': {
         const id = effect.sessionId.slice(0, 8);
-        dispatch({ kind: 'busy', text: `stopping ${id}…` });
+        dispatch({ kind: 'busy', text: tr(state)('stopping {id}…', { id }) });
         try {
           const result = await sources.stopSession({
             brain: effect.brain,
@@ -346,8 +356,11 @@ export function startApp(options: AppOptions): App {
             kind: 'note',
             note:
               result === 'stopped'
-                ? { text: `stopped ${id} · its conversation stays: r continues it in a pane`, tone: 'ok' }
-                : { text: `${id} has already stopped`, tone: 'info' },
+                ? {
+                    text: tr(state)('stopped {id} · its conversation stays: r continues it in a pane', { id }),
+                    tone: 'ok',
+                  }
+                : { text: tr(state)('{id} has already stopped', { id }), tone: 'info' },
           });
         } catch (error) {
           dispatch({ kind: 'note', note: { text: messageOf(error), tone: 'error' } });

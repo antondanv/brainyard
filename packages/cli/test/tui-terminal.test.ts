@@ -66,8 +66,8 @@ describe.skipIf(!panesAvailable())('brainyard, the app (real tmux)', () => {
       `${main}; echo "exited $?"; sleep 30`,
     );
     try {
-      await until('Panes · 0');
-      await until(/Claude Code\s+2\.1\.999\s+ready/);
+      await until(/╭─ Panes ─+ 0 panes ─╮/);
+      await until(/╭─ Claude Code ─+ ready ─╮/);
       expect(await term('display-message', '-p', '-t', '=app:', '#{alternate_on}')).toBe('1\n');
 
       await press('n');
@@ -82,8 +82,9 @@ describe.skipIf(!panesAvailable())('brainyard, the app (real tmux)', () => {
       await until('got:hi');
 
       await press('C-q');
-      const back = await until(`› ${pane!.pane}`);
-      expect(back).toContain('Panes · 1');
+      // Back on the overview, the pane is there and selected.
+      const back = await until(new RegExp(`▌ . \\(no label\\) .*${pane!.pane}`));
+      expect(back).toMatch(/╭─ Panes ─+ 1 pane/);
       expect(back).toContain('Enter go in (Ctrl+Q back) · x close');
       expect((await listPanes(settings)).map((info) => info.pane)).toEqual([pane!.pane]);
 
@@ -103,12 +104,12 @@ describe.skipIf(!panesAvailable())('brainyard, the app (real tmux)', () => {
       await press('C-q');
       await until('←→↑↓ focus');
       await press('1');
-      await until(`› ${pane!.pane}`);
+      await until(new RegExp(`▌ . \\(no label\\) .*${pane!.pane}`));
 
       await press('x');
       await until(`Close ${pane!.pane}?`);
       await press('y');
-      await until('Panes · 0');
+      await until(/╭─ Panes ─+ 0 panes ─╮/);
       expect(await listPanes(settings)).toEqual([]);
 
       await press('q');

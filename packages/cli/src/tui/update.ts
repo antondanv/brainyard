@@ -22,6 +22,7 @@ import {
   type State,
   sections,
   stoppable,
+  tr,
   waitingIds,
 } from './state.js';
 import { bodyHeight, clampScroll, layout, newChoices, PLAIN } from './view.js';
@@ -111,8 +112,14 @@ function withOut<K extends 'busy' | 'note' | 'dialog' | 'selected'>(state: State
   return rest as State;
 }
 
-function noted(state: State, text: string, tone: Note['tone'] = 'info'): Step {
-  return [{ ...state, note: { text, tone } }, []];
+/** A note in the app's language; `text` is its English. */
+function noted(
+  state: State,
+  text: string,
+  tone: Note['tone'] = 'info',
+  params?: Record<string, string | number>,
+): Step {
+  return [{ ...state, note: { text: tr(state)(text, params), tone } }, []];
 }
 
 function closeDialog(state: State): State {
@@ -382,6 +389,8 @@ function filterInput(state: State, data: string): Step {
 // ---------------------------------------------------------------------------
 function withSetting(settings: Settings, name: SettingName, value: string): Settings {
   switch (name) {
+    case 'language':
+      return { ...settings, language: value as Settings['language'] };
     case 'bell':
       return { ...settings, bell: value === 'on' };
     case 'theme':
@@ -516,7 +525,8 @@ function enter(state: State, item: Item | undefined): Step {
       if (blocked) return noted(state, blocked, 'error');
       const status = state.data.status?.brains.find((brain) => brain.id === item.brain);
       if (status?.availability === 'not_installed') {
-        return noted(state, `${status.label} is not installed${status.fix ? `: ${status.fix}` : ''}`, 'error');
+        const missing = tr(state)('{cli} is not installed', { cli: status.label });
+        return [{ ...state, note: { text: `${missing}${status.fix ? `: ${status.fix}` : ''}`, tone: 'error' } }, []];
       }
       return [state, [startNew(state, item.brain)]];
     }
@@ -547,7 +557,7 @@ function close(state: State, item: Item | undefined): Step {
       ...state,
       dialog: {
         kind: 'confirm',
-        question: `Close ${pane}? Its CLI ends; what was said in it stays, and r continues it.`,
+        question: tr(state)('Close {pane}? Its CLI ends; what was said in it stays, and r continues it.', { pane }),
         effect: { kind: 'close', pane },
       },
     },
@@ -564,7 +574,10 @@ function stop(state: State, item: Item | undefined): Step {
         ...state,
         dialog: {
           kind: 'confirm',
-          question: `Stop ${session.id.slice(0, 8)}${title}? It stops working; the conversation stays.`,
+          question: tr(state)('Stop {id}{title}? It stops working; the conversation stays.', {
+            id: session.id.slice(0, 8),
+            title,
+          }),
           effect: { kind: 'stop', brain: session.brain, sessionId: session.id, cwd: session.cwd ?? state.cwd },
         },
       },
@@ -574,7 +587,7 @@ function stop(state: State, item: Item | undefined): Step {
   if (item?.kind === 'pane' || (item?.kind === 'session' && item.pane)) {
     return noted(state, 'a pane is closed with x: its CLI ends, the conversation stays');
   }
-  return noted(state, `s stops a ${BRAINS.claude.label} background session; this is not one`);
+  return noted(state, 's stops a {cli} background session; this is not one', 'info', { cli: BRAINS.claude.label });
 }
 
 function resume(state: State, item: Item | undefined): Step {

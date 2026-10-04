@@ -1,5 +1,5 @@
 import { BrainyardError, type PaneStart } from '@antondanv/brainyard';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { PaneRow } from '../src/panes.js';
 import { type App, type AppHost, type Sources, startApp } from '../src/tui/app.js';
@@ -10,6 +10,12 @@ async function until(check: () => boolean, ms = 3_000): Promise<void> {
   while (!check() && Date.now() < end) await new Promise((done) => setTimeout(done, 20));
   expect(check()).toBe(true);
 }
+
+// A test that fails before its app.stop() must not leave the app's timers running.
+const running: App[] = [];
+afterEach(() => {
+  for (const app of running.splice(0)) app.stop();
+});
 
 /** The app over stand-in sources and a host that records frames and attachments. */
 function harness(over: Partial<Sources> = {}) {
@@ -76,6 +82,7 @@ function harness(over: Partial<Sources> = {}) {
     every: { panes: 1e9, live: 1e9, sessions: 1e9, usage: 1e9, limits: 1e9, status: 1e9 },
     clock: () => NOW,
   });
+  running.push(app);
   const screen = () => (frames.at(-1) ?? []).join('\n');
   return {
     app,
@@ -100,10 +107,10 @@ describe('the app at run time', () => {
   it('reads every source and draws what it read', async () => {
     const { app, screen } = harness();
     await app.idle();
-    expect(screen()).toContain('Panes · 2');
-    expect(screen()).toContain('› claude-1a2b3c4d');
-    expect(screen()).toContain('5h 34% · resets in 2h');
-    expect(screen()).toContain('Sessions of /work/app · 3 · $4.23 + 1 unpriced');
+    expect(screen()).toMatch(/╭─ Panes ─+ 2 panes · 405 MB ─╮/);
+    expect(screen()).toMatch(/│ ▌ ● auth refactor +Claude Code +working/);
+    expect(screen()).toMatch(/│ 5h +█+.*34% │/);
+    expect(screen()).toMatch(/╭─ Sessions · \/work\/app ─+ 3 sessions · \$4\.23 · 31M tokens ─╮/);
     app.stop();
   });
 
@@ -123,7 +130,8 @@ describe('the app at run time', () => {
     await keys(app, 'n', 'right', 'enter');
     expect(sources.startPane).toHaveBeenCalledWith({ brain: 'codex', cwd: HERE, width: 110, height: 34 });
     expect(attached).toEqual(['codex-00000001']);
-    expect(screen()).toContain('› codex-00000001');
+    // Its session is not known yet: an empty dot.
+    expect(screen()).toMatch(/│ ▌ ○ \(no label\) .* codex-00000001/);
     expect(app.state().busy).toBeUndefined();
     app.stop();
   });
@@ -149,7 +157,7 @@ describe('the app at run time', () => {
     await keys(app, 'x', 'y');
     expect(sources.closePane).toHaveBeenCalledWith('claude-1a2b3c4d');
     expect(screen()).toContain('closed claude-1a2b3c4d · what was said in it stays');
-    expect(screen()).toContain('Panes · 1');
+    expect(screen()).toMatch(/╭─ Panes ─+ 1 pane · 120 MB ─╮/);
 
     app.dispatch({ kind: 'select', key: 'running:claude:cccc3333-0000-4000-8000-000000000003' });
     await keys(app, 's', 'y');
@@ -182,7 +190,7 @@ describe('the app at run time', () => {
       },
     });
     await app.idle();
-    expect(screen()).toContain('Panes · 2');
+    expect(screen()).toMatch(/╭─ Panes ─+ 2 panes/);
     expect(app.state().data.errors.live).toBe('claude agents timed out');
     app.stop();
   });
@@ -236,7 +244,8 @@ describe('the app at run time', () => {
   it('keeps a changed setting, and rings when someone starts waiting', async () => {
     const { app, sources, rang } = harness({ live: async () => [] });
     await app.idle();
-    await keys(app, '5', 'right');
+    // Language comes first; the theme is the setting below it.
+    await keys(app, '5', 'down', 'right');
     expect(sources.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: 'ocean' }));
     app.dispatch({ kind: 'loaded', source: 'live', data: { live: LIVE } });
     await app.idle();

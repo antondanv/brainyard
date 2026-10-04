@@ -15,6 +15,7 @@ import {
 } from '@antondanv/brainyard';
 
 import type { PaneRow } from '../panes.js';
+import { type Translate, translator } from './i18n.js';
 import { DEFAULT_SETTINGS, type Layout, type Page, type Settings } from './settings.js';
 
 export { LAYOUTS, type Layout, PAGES, type Page } from './settings.js';
@@ -169,6 +170,13 @@ export function initialState(options: {
     cursor: 0,
     scroll: 0,
   };
+}
+
+const translators = { en: translator('en'), ru: translator('ru') };
+
+/** The state's language, ready to translate a text. */
+export function tr(state: State): Translate {
+  return translators[state.settings.language] ?? translators.en;
 }
 
 export type Item =

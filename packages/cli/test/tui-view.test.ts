@@ -23,34 +23,34 @@ function expectScreen(lines: string[], state: State): void {
 const trimmed = (lines: string[]) => lines.map((line) => line.trimEnd());
 
 describe('the screen', () => {
-  it('shows agents with their limits, panes, sessions elsewhere and this folder’s sessions with their usage', () => {
+  it('shows the agents as cards with their limits, then boxes of panes and sessions', () => {
     const state = world();
     const lines = render(state, plain);
     expectScreen(lines, state);
     expect(trimmed(lines)).toEqual([
       'Brainyard 0.2.0  [1 Overview]  2 Wall   3 Sessions   4 Usage   5 Settings      ⚠ 1 waiting · 2 panes',
-      '',
-      'Agents',
-      '  ● Claude Code  2.1.999   ready         signed in with claude.ai, max as j***@example.com',
-      '    limits  not checked: brainyard usage --live (one tiny real call)',
-      '  ● Codex        0.50.0    ready         signed in with ChatGPT · default model gpt-5.5',
-      '    limits  5h 34% · resets in 2h   weekly 92% · resets in 4d 3h   seen 3h ago',
-      '  ● Antigravity  1.2.0     ready         signed in · model list fetched with your account',
-      '    limits  Gemini: weekly 1%',
-      '            Claude and GPT: weekly 40%',
-      '  ● OpenCode     —         not installed → npm install -g opencode-ai',
-      '',
-      'Panes · 2',
-      '› claude-1a2b3c4d  Claude Code  aaaa1111  285 MB  working            active     /work/app    auth r…',
-      '  codex-5e6f7a8b   Codex        bbbb2222  120 MB  waiting: approval  quiet 12m  /work/other',
-      '',
-      'Running in other folders · 1',
-      '  Claude Code  cccc3333  3m       /work/other  Nightly cleanup bg ● working',
-      '',
-      'Sessions of /work/app · 3 · $4.23 + 1 unpriced · 14k in · 38k out · 31M cache',
-      '  Claude Code  aaaa1111  now  1.2k in   34k out  31M cache     $4.21  Auth refactor ● working ▣ cla…',
-      '  Claude Code  dddd4444  3h    950 in   120 out                $0.02  Fix the flaky test',
-      '  Codex        eeee5555  2d    12k in  3.4k out             no price  Explain CRDTs',
+      '╭─ Claude Code ────────────────────────── ready ─╮╭─ Codex ──────────────────────────────── ready ─╮',
+      '│ 2.1.999  claude.ai · max                       ││ 0.50.0  ChatGPT                                │',
+      '│ 5h       ███████████████████▊░░░░░░░░░░░░  62% ││ 5h       ██████████▉░░░░░░░░░░░░░░░░░░░░░  34% │',
+      '│ weekly   ████████████████████████████████ 100% ││ weekly   █████████████████████████████▍░░  92% │',
+      '╰────────────────────────────────── seen 7h ago ─╯╰────────────────────────────────── seen 3h ago ─╯',
+      '╭─ Antigravity ────────────────────────── ready ─╮╭─ OpenCode ───────────────────── not installed ─╮',
+      '│ 1.2.0  signed in                               ││ —  npm install -g opencode-ai                  │',
+      '│ Gemini   ▎░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   1% ││                                                │',
+      '│ Claude   ████████████▊░░░░░░░░░░░░░░░░░░░  40% ││                                                │',
+      '╰────────────────────────────────────────────────╯╰────────────────────────────────────────────────╯',
+      '╭─ Panes ─────────────────────────────────────────────────────────────────────── 2 panes · 405 MB ─╮',
+      '│ ▌ ● auth refactor                      Claude Code  working                      active   285 MB │',
+      '│   ● (no label) · /work/other           Codex        waiting: approval         quiet 12m   120 MB │',
+      '╰──────────────────────────────────────────────────────────────────────────────────────────────────╯',
+      '╭─ Running in other folders ─────────────────────────────────────────────────────────────────── 1 ─╮',
+      '│   ● Nightly cleanup bg · /work/other                   Claude Code      3m  working              │',
+      '╰──────────────────────────────────────────────────────────────────────────────────────────────────╯',
+      '╭─ Sessions · /work/app ───────────────────────────────────────── 3 sessions · $4.23 · 31M tokens ─╮',
+      '│   ● Auth refactor                   Claude Code     now  ▣ claude-1a2b3c4d        31M      $4.21 │',
+      '│   ○ Fix the flaky test              Claude Code      3h                          1.1k      $0.02 │',
+      '│   ○ Explain CRDTs                   Codex            2d                           15k   no price │',
+      '╰──────────────────────────────────────────────────────────────────────────────────────────────────╯',
       '',
       '',
       '',
@@ -63,24 +63,33 @@ describe('the screen', () => {
     ]);
   });
 
-  it('is the same frame in colour: the selected row inverted, every row still the screen’s width', () => {
+  it('is the same frame in colour: the selection marked in the accent, every row still the screen’s width', () => {
     const state = world();
     const lines = render(state, colour);
     expectScreen(lines, state);
-    const selected = lines.find((line) => line.includes('claude-1a2b3c4d') && line.includes('›'));
-    expect(selected?.startsWith('\u001b[7m')).toBe(true);
-    expect(lines.filter((line) => line.startsWith('\u001b[7m'))).toHaveLength(1);
     expect(lines.map(uncoloured)).toEqual(render(state, plain));
-    expect(lines.join('\n')).toContain('\u001b[31m92%');
+    const selected = lines.filter((line) => line.includes('\u001b[36m▌'));
+    expect(selected).toHaveLength(1);
+    expect(uncoloured(selected[0]!)).toContain('auth refactor');
+    expect(lines.join('\n')).toContain('\u001b[31m██');
+    // The card of the selected agent takes the accent too.
+    const agent = render(world({ selected: 'agent:codex' }), colour);
+    expect(agent[1]).toContain('\u001b[36m╭─');
   });
 
-  it('cuts rows that do not fit, and asks for room when the window is too small', () => {
-    const narrow = world({ width: 60, height: 20 });
+  it('puts two cards in a row on a narrower screen, one on a narrow one, and asks for room below that', () => {
+    const middle = world({ width: 80, height: 30 });
+    const two = render(middle, plain);
+    expectScreen(two, middle);
+    expect(two[1]).toMatch(/^╭─ Claude Code ─+ ready ─╮╭─ Codex ─+ ready ─╮$/);
+    const narrow = world({ width: 60, height: 30 });
     const lines = render(narrow, plain);
     expectScreen(lines, narrow);
-    expect(lines.some((line) => line.endsWith('…'))).toBe(true);
-    // A narrow screen names only the open page; the cost of the panes goes first.
+    // A narrow screen names only the open page; the memory of the panes goes first.
     expect(lines[0]).toMatch(/^Brainyard {2}\[1 Overview\] 2 {2}3 {2}4 {2}5 +⚠ 1 waiting · 2 panes$/);
+    expect(lines[1]).toMatch(/^╭─ Claude Code ─+ ready ─╮$/);
+    // Columns give way: the pane's state stays, its name and memory go first.
+    expect(lines.find((line) => line.includes('auth refactor'))).toContain('working');
 
     const tiny = world({ width: 30, height: 5 });
     const shown = render(tiny, plain);
@@ -101,18 +110,19 @@ describe('the screen', () => {
       },
     );
     const text = trimmed(render(loading, plain)).join('\n');
-    expect(text).toContain('› ○ Claude Code  checking…');
-    expect(text).toContain('  ○ Codex        checking…');
-    expect(text).toContain('Panes\n  reading…');
-    expect(text).toContain('Sessions of /work/app\n  reading…');
+    expect(text).toMatch(/╭─ Claude Code ─+ checking… ─╮/);
+    expect(text).toMatch(/╭─ Panes ─+╮\n│ {3}reading… +│/);
+    expect(text).toMatch(/╭─ Sessions · \/work\/app ─+╮\n│ {3}reading… +│/);
 
     const failing = world(
       {},
       { status: undefined, panes: [], tmux: false, errors: { status: 'claude: spawn EACCES' } },
     );
     const shown = trimmed(render(failing, plain)).join('\n');
-    expect(shown).toContain('Agents · claude: spawn EACCES');
-    expect(shown).toContain('Panes · 0\n  panes need tmux');
+    // Cards stand two in a row here: the next one follows on the same lines.
+    expect(shown).toMatch(/╭─ Claude Code ─+ unknown ─╮╭/);
+    expect(shown).toMatch(/│ claude: spawn EACCES +││/);
+    expect(shown).toMatch(/╭─ Panes ─+ 0 panes ─╮\n│ {3}panes need tmux +│/);
   });
 
   it('asks before closing, offers the CLIs for a new pane and shows the keys on ?', () => {
@@ -136,7 +146,7 @@ describe('the screen', () => {
     expect(help[2]).toBe('Keys');
     expect(help.join('\n')).toContain('Enter            into the pane, full screen; Ctrl+Q — back');
     expect(help.join('\n')).toContain('i                type into it: every key goes to its CLI until Ctrl+Q');
-    expect(help.at(-1)).toBe(' any key — back');
+    expect(help.at(-1)).toBe(' any key back');
   });
 
   it('shows a busy line, then a note, and keys for what is selected', () => {
@@ -144,7 +154,7 @@ describe('the screen', () => {
     expect(keys('agent:codex')).toBe(' Enter new Codex pane · n new · ? help · q quit');
     expect(keys('running:claude:cccc3333-0000-4000-8000-000000000003')).toBe(' s stop · n new · ? help · q quit');
     expect(keys('session:claude:dddd4444-0000-4000-8000-000000000004')).toBe(
-      ' Enter or r continue in a pane · n new · ? help · q quit',
+      ' Enter continue in a pane · n new · ? help · q quit',
     );
     expect(keys('session:claude:aaaa1111-0000-4000-8000-000000000001')).toBe(
       ' Enter go in (Ctrl+Q back) · x close the pane · n new · ? help · q quit',
@@ -167,22 +177,23 @@ describe('the screen', () => {
     expect(lines[0]).toMatch(/^Brainyard/);
     expect(lines.at(-1)).toMatch(/q quit$/);
     expect(lines.slice(1, -2).some((line) => line.includes('Session 1'))).toBe(true);
-    // Past the end, the last rows fill the body.
+    // Past the end, the last rows fill the body: the last session, then its box's bottom.
     const end = trimmed(render({ ...state, scroll: 999 }, plain));
-    expect(end.at(-3)).toContain('Session 39');
+    expect(end.at(-4)).toContain('Session 39');
+    expect(end.at(-3)).toMatch(/^╰─+╯$/);
   });
 
   it('keeps a hostile or wide title from breaking the frame', () => {
     const title = 'Clear\u001b[2J\u001b]8;;http://x\u0007link\u001b]8;;\u0007 漢字テスト 🔥🔥 ok';
     const state = world(
-      { width: 72 },
+      { width: 120 },
       { sessions: [{ brain: 'claude', id: 'abcd0000-1', cwd: HERE, title, interactive: true }], usage: [] },
     );
     const lines = render(state, colour);
     expectScreen(lines, state);
-    const row = lines.find((line) => line.includes('abcd0000'))!;
+    const row = lines.find((line) => line.includes('Clearlink'))!;
     expect(row).not.toContain('\u001b[2J');
     expect(row).not.toContain('\u001b]8');
-    expect(row).toContain('Clearlink 漢字テスト 🔥🔥 ok');
+    expect(uncoloured(row)).toContain('Clearlink 漢字テスト 🔥🔥 ok');
   });
 });

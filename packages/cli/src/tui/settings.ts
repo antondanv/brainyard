@@ -9,10 +9,20 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import type { Colour, Theme } from '../term.js';
+import { LANGUAGES, type Language } from './i18n.js';
 
 /** The app's pages, left to right; digits 1–5 open them. */
 export const PAGES = ['overview', 'wall', 'sessions', 'usage', 'settings'] as const;
 export type Page = (typeof PAGES)[number];
+
+/** The pages by name, as their tabs read. */
+export const PAGE_NAMES: Record<Page, string> = {
+  overview: 'Overview',
+  wall: 'Wall',
+  sessions: 'Sessions',
+  usage: 'Usage',
+  settings: 'Settings',
+};
 
 /** How the wall lays its tiles out. */
 export const LAYOUTS = ['grid', 'main', 'columns'] as const;
@@ -83,6 +93,8 @@ export type AccentName = keyof typeof ACCENTS;
 export const ACCENT_NAMES = Object.keys(ACCENTS) as AccentName[];
 
 export interface Settings {
+  /** The app's language: English by default, or Russian. */
+  language: Language;
   theme: ThemeName;
   accent: AccentName;
   layout: Layout;
@@ -94,6 +106,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  language: 'en',
   theme: 'terminal',
   accent: 'theme',
   layout: 'grid',
@@ -135,6 +148,7 @@ const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback:
 export function parseSettings(data: unknown): Settings {
   const raw = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
   const settings: Settings = {
+    language: pick(raw.language, LANGUAGES, DEFAULT_SETTINGS.language),
     theme: pick(raw.theme, THEME_NAMES, DEFAULT_SETTINGS.theme),
     accent: pick(raw.accent, ACCENT_NAMES, DEFAULT_SETTINGS.accent),
     layout: pick(raw.layout, LAYOUTS, DEFAULT_SETTINGS.layout),

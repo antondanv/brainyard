@@ -66,7 +66,16 @@ export const STATUS: StatusReport = {
 const seconds = (ms: number) => Math.round(ms / 1000);
 
 export const LIMITS: BrainUsage[] = [
-  { brain: 'claude', limits: null, limitsSource: null, limitsObservedAt: null, limitsUnavailable: 'not_requested' },
+  {
+    brain: 'claude',
+    limits: [
+      { window: 'five_hour', utilization: 0.62, windowMinutes: 300, resetsAt: seconds(NOW + HOUR) },
+      { window: 'seven_day', utilization: 1, windowMinutes: 10_080, resetsAt: seconds(NOW + 36 * HOUR) },
+    ],
+    limitsSource: 'cache',
+    limitsObservedAt: iso(NOW - 7 * HOUR),
+    limitsUnavailable: null,
+  },
   {
     brain: 'codex',
     limits: [
