@@ -27,6 +27,7 @@
   --claude: #e08a5f;
   --codex: #4fbf9f;
   --antigravity: #6ea8ff;
+  --opencode: #c792ea;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
   color-scheme: dark;
 }
@@ -51,6 +52,7 @@
   --claude: #c0643c;
   --codex: #178a6c;
   --antigravity: #2f6fdc;
+  --opencode: #8b4fd1;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -120,6 +122,7 @@ h2 small { font-size: inherit; font-weight: 400; color: var(--faint); }
 [data-brain="claude"] { --brand: var(--claude); }
 [data-brain="codex"] { --brand: var(--codex); }
 [data-brain="antigravity"] { --brand: var(--antigravity); }
+[data-brain="opencode"] { --brand: var(--opencode); }
 
 /* ----- status cards ------------------------------------------------------ */
 .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px 16px; margin-top: 20px; }

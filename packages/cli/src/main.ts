@@ -37,7 +37,7 @@ const err = paint(process.stderr);
 
 class UsageError extends Error {}
 
-const HELP = `${out.bold('brainyard')} ${VERSION} — one interface to Claude Code, Codex and Antigravity
+const HELP = `${out.bold('brainyard')} ${VERSION} — one interface to Claude Code, Codex, Antigravity and OpenCode
 
 ${out.bold('Usage')}
   brainyard [status]                 which CLIs are installed, signed in and ready
@@ -49,7 +49,7 @@ ${out.bold('Usage')}
   brainyard open <brain> [prompt]    open a CLI here as a session you can come back to
   brainyard ui                       local dashboard: status, models and a playground
 
-${out.bold('Brains')}  claude (Claude Code) · codex (Codex) · antigravity (Antigravity, alias agy)
+${out.bold('Brains')}  claude (Claude Code) · codex (Codex) · antigravity (Antigravity, alias agy) · opencode (OpenCode)
 
 ${out.bold('status')}   --live  --models  --json  --brain <id> (repeatable)  --reveal-account
 ${out.bold('models')}   --json  --refresh
@@ -373,12 +373,12 @@ async function openCommand(args: string[]): Promise<number> {
     return 1;
   }
   if (result.sessionId) {
-    const how =
-      brain === 'claude'
-        ? `claude --resume ${result.sessionId}`
-        : brain === 'codex'
-          ? `codex resume ${result.sessionId}`
-          : `agy --conversation ${result.sessionId}`;
+    const how = {
+      claude: `claude --resume ${result.sessionId}`,
+      codex: `codex resume ${result.sessionId}`,
+      antigravity: `agy --conversation ${result.sessionId}`,
+      opencode: `opencode --session ${result.sessionId}`,
+    }[brain];
     process.stderr.write(`${err.dim('session')} ${result.sessionId} ${err.dim(`· continue: ${how}`)}\n`);
   }
   return result.ok ? 0 : (result.exitCode ?? 1);
