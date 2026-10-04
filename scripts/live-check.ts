@@ -28,10 +28,14 @@ import {
   status,
 } from '@antondanv/brainyard';
 
+const opencodeModel = process.env.BRAINYARD_LIVE_OPENCODE_MODEL?.trim();
 const CHEAP: Record<BrainId, Pick<RunOptions, 'model' | 'effort'>> = {
   claude: { model: 'haiku' },
   codex: { effort: 'low' },
   antigravity: { effort: 'low' },
+  // OpenCode runs whatever providers you connected: the default one, or
+  // BRAINYARD_LIVE_OPENCODE_MODEL (`opencode/big-pickle` is free).
+  opencode: opencodeModel ? { model: opencodeModel } : {},
 };
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { only: { type: 'string' } } });
