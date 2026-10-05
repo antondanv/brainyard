@@ -518,7 +518,7 @@ export async function attachPane(pane: string, options: { hint?: string } & Pane
     'latest',
   ]);
   if (!style.ok) throw new BrainyardError('failed', `no such pane: ${pane}`);
-  // A server started by an older Brainyard (or by Treeyard on one) copies to the clipboard too.
+  // A server started by an older Brainyard, or by another program on its socket, copies to the clipboard too.
   await copyToClipboard(t);
   const child = spawnInteractive(t.command, ['-L', t.socket, '-f', '/dev/null', 'attach-session', '-t', target(pane)], {
     cwd: process.cwd(),

@@ -184,7 +184,7 @@ or `xsel`; `BRAINYARD_COPY_COMMAND` names another).
 ```console
 $ brainyard sessions --live
 Claude Code  2dcf2506  24m      ~/Projects/Brainyard  CLI for the whole API ● working ▣ claude-a6d7c603
-Claude Code  381a87e4  21h      ~/Projects/Treeyard   GitHub issues in the tree bg ● blocked
+Claude Code  381a87e4  21h      ~/Projects/shop       Retry failed payments bg ● blocked
 
 $ pane=$(brainyard pane start claude --name "release notes" "Draft the 0.2 release notes")
 $ brainyard pane send $pane "Shorter, please"   # the text, then Enter as a key of its own

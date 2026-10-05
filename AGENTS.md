@@ -6,7 +6,6 @@
 и из браузера. Два пакета в одном репозитории (npm workspaces, одна версия):
 `@antondanv/brainyard` — только API, `@antondanv/brainyard-cli` — команда `brainyard`, приложение
 в терминале и в браузере (`brainyard web`) и дашборд.
-Главный потребитель API — Treeyard (`../Treeyard`).
 
 ## Стек
 

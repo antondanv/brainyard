@@ -187,7 +187,7 @@ CLI, и чего оно ждёт. Панель — сессия CLI в tmux, к�
 ```console
 $ brainyard sessions --live
 Claude Code  2dcf2506  24m      ~/Projects/Brainyard  CLI for the whole API ● working ▣ claude-a6d7c603
-Claude Code  381a87e4  21h      ~/Projects/Treeyard   GitHub issues in the tree bg ● blocked
+Claude Code  381a87e4  21h      ~/Projects/shop       Retry failed payments bg ● blocked
 
 $ pane=$(brainyard pane start claude --name "release notes" "Draft the 0.2 release notes")
 $ brainyard pane send $pane "Shorter, please"   # текст, потом Enter отдельной клавишей
