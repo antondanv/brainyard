@@ -1,23 +1,42 @@
 /**
- * The app on a made-up machine, in a browser: for screenshots of the README
- * and for a look at the screen without touching any real CLI, pane or store.
+ * The app on a made-up machine: for the README's pictures and for a look at
+ * the screen without touching any real CLI, pane or store.
  *
- *   npm run demo                      # http://127.0.0.1:4848/#token=demo
+ *   npm run demo                      # in a browser: http://127.0.0.1:4848/#token=demo
  *   npm run demo -- --port 5000 --ru  # another port; the app in Russian
+ *   npm run demo -- --terminal        # in this terminal, as `brainyard` opens
  *
- * Keys and clicks work as in `brainyard web`; panes are pictures that answer
- * nothing, and nothing is started, closed or stopped for real.
+ * Keys and clicks work as in `brainyard` and `brainyard web`; panes are
+ * pictures that answer nothing, and nothing is started, closed or stopped for
+ * real. The dashboard (/dashboard) shows the made-up CLIs too, but an ask or a
+ * run started there goes to the real ones.
  */
 import { parseArgs } from 'node:util';
 
-import { emptyUsage, type PaneScreen, type SessionInfo, type SessionUsage } from '@antondanv/brainyard';
+import {
+  type Catalog,
+  CLAUDE_EFFORTS,
+  type Effort,
+  emptyUsage,
+  type ModelInfo,
+  type PaneScreen,
+  type SessionInfo,
+  type SessionUsage,
+  type StatusReport,
+} from '@antondanv/brainyard';
+import type { Sources } from '../packages/cli/src/tui/app.js';
 import { DEFAULT_SETTINGS } from '../packages/cli/src/tui/settings.js';
+import { runApp } from '../packages/cli/src/tui/terminal.js';
 import { startWeb } from '../packages/cli/src/tui/web.js';
 import { serve } from '../packages/cli/src/ui/server.js';
 import { HERE, LIMITS, LIVE, NOW, PANES, SESSIONS, STATUS, USAGE } from '../packages/cli/test/tui-world.js';
 
 const { values } = parseArgs({
-  options: { port: { type: 'string', default: '4848' }, ru: { type: 'boolean' } },
+  options: {
+    port: { type: 'string', default: '4848' },
+    ru: { type: 'boolean' },
+    terminal: { type: 'boolean' },
+  },
 });
 
 const ESC = '\u001b[';
@@ -127,29 +146,89 @@ function screen(pane: string): PaneScreen {
   };
 }
 
-const web = startWeb({
+/** The dashboard's cards: where each CLI lives and the models it lists. */
+const model = (id: string, label: string, efforts: Effort[] = []): ModelInfo => ({
+  id,
+  label,
+  efforts,
+  effortRequired: false,
+  variants: [],
+});
+const catalog = (brain: Catalog['brain'], models: ModelInfo[], source: Catalog['source'] = 'cli'): Catalog => ({
+  brain,
+  models,
+  defaultEfforts: [],
+  source,
+  fetchedAt: new Date(NOW).toISOString(),
+});
+const MODELS: Partial<Record<Catalog['brain'], Catalog>> = {
+  claude: catalog(
+    'claude',
+    [
+      model('fable', 'Fable', [...CLAUDE_EFFORTS]),
+      model('opus', 'Opus', [...CLAUDE_EFFORTS]),
+      model('sonnet', 'Sonnet', [...CLAUDE_EFFORTS]),
+      model('haiku', 'Haiku'),
+    ],
+    'builtin',
+  ),
+  codex: catalog('codex', [
+    model('gpt-5.5', 'GPT-5.5', ['low', 'medium', 'high', 'xhigh']),
+    model('gpt-5.5-codex', 'GPT-5.5 Codex', ['low', 'medium', 'high']),
+    model('gpt-5.5-mini', 'GPT-5.5 mini', ['low', 'medium', 'high']),
+  ]),
+  antigravity: catalog('antigravity', [
+    model('gemini-3.8-pro', 'Gemini 3.8 Pro', ['low', 'high']),
+    model('gemini-3.8-flash', 'Gemini 3.8 Flash', ['low', 'high']),
+    model('claude-sonnet-5', 'Claude Sonnet 5'),
+  ]),
+};
+const PATHS: Partial<Record<Catalog['brain'], string>> = {
+  claude: '~/.local/bin/claude',
+  codex: '/opt/homebrew/bin/codex',
+  antigravity: '~/.local/bin/agy',
+};
+const DEMO_STATUS: StatusReport = {
+  ...STATUS,
+  brains: STATUS.brains.map((brain) => ({
+    ...brain,
+    ...(PATHS[brain.id] ? { path: PATHS[brain.id] } : {}),
+    ...(MODELS[brain.id] ? { models: MODELS[brain.id] } : {}),
+  })),
+  node: 'v22.20.0',
+  platform: 'darwin-arm64',
+};
+
+const sources: Partial<Sources> = {
+  status: async () => STATUS,
+  limits: async () => LIMITS,
+  panes: async () => ({ tmux: true, panes: PANES }),
+  live: async () => LIVE,
+  sessions: async () => DEMO_SESSIONS,
+  usage: async () => DEMO_USAGE,
+  capture: async (pane) => screen(pane),
+  resize: async () => true,
+  send: async () => undefined,
+  startPane: async () => {
+    throw new Error('the demo starts nothing');
+  },
+  closePane: async () => false,
+  stopSession: async () => 'not-running',
+  saveSettings: () => undefined,
+};
+const app = {
   cwd: HERE,
   clock: () => NOW,
-  settings: { ...DEFAULT_SETTINGS, language: values.ru ? 'ru' : 'en' },
+  settings: { ...DEFAULT_SETTINGS, language: values.ru ? ('ru' as const) : ('en' as const) },
   settingsFile: '~/.config/brainyard/app.json',
-  sources: {
-    status: async () => STATUS,
-    limits: async () => LIMITS,
-    panes: async () => ({ tmux: true, panes: PANES }),
-    live: async () => LIVE,
-    sessions: async () => DEMO_SESSIONS,
-    usage: async () => DEMO_USAGE,
-    capture: async (pane) => screen(pane),
-    resize: async () => true,
-    send: async () => undefined,
-    startPane: async () => {
-      throw new Error('the demo starts nothing');
-    },
-    closePane: async () => false,
-    stopSession: async () => 'not-running',
-    saveSettings: () => undefined,
-  },
-  onQuit: () => process.exit(0),
-});
-const server = await serve({ port: Number(values.port), token: 'demo', app: web });
-process.stdout.write(`Brainyard demo — Ctrl+C to stop\n  ${server.url}\n`);
+  sources,
+};
+
+if (values.terminal) {
+  // Enter on a pane stays here: the demo's panes are pictures, not tmux.
+  process.exit(await runApp({ ...app, attach: async () => undefined }));
+}
+
+const web = startWeb({ ...app, onQuit: () => process.exit(0) });
+const server = await serve({ port: Number(values.port), token: 'demo', app: web, status: async () => DEMO_STATUS });
+process.stdout.write(`Brainyard demo — Ctrl+C to stop\n  ${server.url}\n  ${server.origin}/dashboard#token=demo\n`);

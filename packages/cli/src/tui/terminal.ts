@@ -11,7 +11,7 @@ import { attachPane, tidyPaths } from '@antondanv/brainyard';
 
 import { colourful } from '../term.js';
 import { VERSION } from '../version.js';
-import { type App, type Sources, startApp } from './app.js';
+import { type App, type AppOptions, startApp } from './app.js';
 import { loadSettings, settingsPath } from './settings.js';
 
 const ENTER = '\u001b[?1049h\u001b[?25l\u001b[?7l\u001b[2J';
@@ -28,8 +28,14 @@ export function placesOf(cwd: string): string[] {
   return [...out];
 }
 
+export interface RunAppOptions extends Pick<AppOptions, 'sources' | 'clock' | 'settings' | 'settingsFile'> {
+  cwd?: string;
+  /** Instead of handing the terminal to tmux: the demo, whose panes are pictures. */
+  attach?: (pane: string) => Promise<void>;
+}
+
 /** Runs the app until the person quits; panes keep running after it. */
-export async function runApp(options: { cwd?: string; sources?: Partial<Sources> } = {}): Promise<number> {
+export async function runApp(options: RunAppOptions = {}): Promise<number> {
   const input = process.stdin;
   const output = process.stdout;
   const cwd = resolve(options.cwd ?? process.cwd());
@@ -92,6 +98,7 @@ export async function runApp(options: { cwd?: string; sources?: Partial<Sources>
   };
 
   const attach = async (pane: string) => {
+    if (options.attach) return options.attach(pane);
     inPane = true;
     giveBack();
     // As open() does before a CLI takes the terminal: flush a fresh pause first.
@@ -149,9 +156,10 @@ export async function runApp(options: { cwd?: string; sources?: Partial<Sources>
       version: VERSION,
       ...size(),
       colour: colourful(output),
-      settings: loadSettings(file),
-      settingsFile: tidyPaths(file),
+      settings: options.settings ?? loadSettings(file),
+      settingsFile: options.settingsFile ?? tidyPaths(file),
       ...(options.sources ? { sources: options.sources } : {}),
+      ...(options.clock ? { clock: options.clock } : {}),
       host: {
         draw,
         attach,

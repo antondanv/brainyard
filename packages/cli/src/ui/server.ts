@@ -39,6 +39,7 @@ import {
   models,
   type RunResult,
   resizePane,
+  type StatusReport,
   sessions,
   start,
   startPane,
@@ -63,6 +64,8 @@ export interface ServeOptions {
   token?: string;
   /** The app to show at `/` instead of the dashboard: `brainyard web`. */
   app?: WebScreen;
+  /** Where `GET /api/status` comes from instead of the CLIs: the demo's made-up machine. */
+  status?: (live: boolean) => Promise<StatusReport>;
 }
 
 export interface Dashboard {
@@ -166,7 +169,8 @@ export async function serve(options: ServeOptions = {}): Promise<Dashboard> {
     const method = req.method ?? 'GET';
 
     if (method === 'GET' && parts[0] === 'status' && parts.length === 1) {
-      const report = await status({ live: url.searchParams.get('live') === '1', models: true });
+      const live = url.searchParams.get('live') === '1';
+      const report = await (options.status ? options.status(live) : status({ live, models: true }));
       // `~/.local/bin/claude` reads better and screenshots better than a full home path.
       for (const brain of report.brains) if (brain.path) brain.path = tidyPaths(brain.path);
       send(res, 200, report);
