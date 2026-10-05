@@ -10,7 +10,7 @@
  */
 import { parseArgs } from 'node:util';
 
-import type { PaneScreen } from '@antondanv/brainyard';
+import { emptyUsage, type PaneScreen, type SessionInfo, type SessionUsage } from '@antondanv/brainyard';
 import { DEFAULT_SETTINGS } from '../packages/cli/src/tui/settings.js';
 import { startWeb } from '../packages/cli/src/tui/web.js';
 import { serve } from '../packages/cli/src/ui/server.js';
@@ -24,6 +24,41 @@ const ESC = '\u001b[';
 const dim = (text: string) => `${ESC}2m${text}${ESC}22m`;
 const bold = (text: string) => `${ESC}1m${text}${ESC}22m`;
 const fg = (code: number, text: string) => `${ESC}38;5;${code}m${text}${ESC}39m`;
+
+/** A few more sessions of the folder than the tests need: a screen with some life in it. */
+const HOUR = 3_600_000;
+const more = (brain: SessionInfo['brain'], id: string, title: string, ago: number): SessionInfo => ({
+  brain,
+  id,
+  title,
+  cwd: HERE,
+  interactive: true,
+  updatedAt: new Date(NOW - ago).toISOString(),
+});
+const EXTRA: SessionInfo[] = [
+  more('claude', 'ffff6666-0000-4000-8000-000000000006', 'Write the release notes', 5 * HOUR),
+  more('antigravity', 'gggg7777-0000-4000-8000-000000000007', 'Why is CI slow on macOS', 26 * HOUR),
+  more('codex', 'hhhh8888-0000-4000-8000-000000000008', 'Upgrade the build to Node 22', 30 * HOUR),
+  more('claude', 'iiii9999-0000-4000-8000-000000000009', 'Rate limiter for the public API', 3 * 24 * HOUR),
+];
+const counted = (session: SessionInfo, input: number, output: number, cache: number, costUsd: number | null) =>
+  ({
+    ...session,
+    usage: { ...emptyUsage(), inputTokens: input, outputTokens: output, cacheReadTokens: cache },
+    costUsd,
+    costSource: costUsd === null ? null : 'estimate',
+    byModel: [],
+    source: session.brain === 'codex' ? 'rollout' : session.brain === 'antigravity' ? 'conversation_db' : 'transcript',
+    unavailableReason: null,
+  }) satisfies SessionUsage;
+const DEMO_SESSIONS = [...SESSIONS, ...EXTRA];
+const DEMO_USAGE: SessionUsage[] = [
+  ...USAGE,
+  counted(EXTRA[0]!, 3_400, 9_800, 2_100_000, 0.91),
+  counted(EXTRA[1]!, 48_000, 6_200, 0, null),
+  counted(EXTRA[2]!, 220_000, 31_000, 4_800_000, null),
+  counted(EXTRA[3]!, 9_100, 41_000, 18_000_000, 6.37),
+];
 
 /** What each made-up CLI shows in its pane. */
 const SCREENS: Record<string, string[]> = {
@@ -102,8 +137,8 @@ const web = startWeb({
     limits: async () => LIMITS,
     panes: async () => ({ tmux: true, panes: PANES }),
     live: async () => LIVE,
-    sessions: async () => SESSIONS,
-    usage: async () => USAGE,
+    sessions: async () => DEMO_SESSIONS,
+    usage: async () => DEMO_USAGE,
     capture: async (pane) => screen(pane),
     resize: async () => true,
     send: async () => undefined,

@@ -21,7 +21,8 @@
     "test:watch": "vitest",
     "dev": "tsx packages/cli/src/main.ts",
     "live": "tsx scripts/live-check.ts",
-    "demo": "tsx scripts/demo.ts"
+    "demo": "tsx scripts/demo.ts",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

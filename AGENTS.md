@@ -23,7 +23,8 @@ npm run dev -- status                 # CLI из исходников
 npm run typecheck && npm test && npm run lint && npm run build   # перед «на проверке»
 npm run format                        # biome check --write
 npm run live                          # проверка на настоящих CLI — тратит деньги, только по просьбе
-npm run demo                          # приложение в браузере на выдуманных данных (скриншоты)
+npm run demo                          # приложение в браузере на выдуманных данных
+npm run screenshots                   # заново снять картинки README (docs/assets/app-*.png, EN и RU; нужен Chrome)
 npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же для packages/brainyard)
 ```
 

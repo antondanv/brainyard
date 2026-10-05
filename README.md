@@ -6,9 +6,9 @@
 
 **One interface to the coding agents you already have: Claude Code, Codex, Antigravity and OpenCode.**
 
-See which are installed and signed in, ask them one-shot questions, or run an agent in a folder
-and watch a live, human-readable feed of what it does. From the terminal, from TypeScript, or
-from a local dashboard.
+One app to watch and drive them, in the terminal or in a browser, and one API to call them from
+your own program: status and subscription limits, one-shot answers, runs with a live feed,
+sessions you come back to, and CLI sessions in tmux panes that outlive whatever started them.
 
 [![CI](https://github.com/antondanv/brainyard/actions/workflows/ci.yml/badge.svg)](https://github.com/antondanv/brainyard/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@antondanv/brainyard?color=6d7dfc)](https://www.npmjs.com/package/@antondanv/brainyard)
@@ -18,7 +18,7 @@ from a local dashboard.
 
 **English** · [Русский](README.ru.md)
 
-<img src="docs/assets/dashboard.png" width="860" alt="The Brainyard dashboard: three status cards, and a Claude Code run that wrote fib.py, ran it and reported the output">
+<img src="docs/assets/app-overview.png" width="860" alt="The Brainyard app: a card for each agent with its subscription limits as bars, the panes and what each CLI does, a session running in another folder, and this folder's sessions with their tokens and cost">
 
 </div>
 
@@ -35,11 +35,18 @@ Brainyard gives them one API. The same options, the same events and the same err
 of them, with the workarounds built in. It drives the CLIs you installed with your own accounts.
 It runs no service, calls no model API and holds no keys.
 
-It was extracted from a production system that runs all three CLIs every day. Most of the
+It was extracted from a production system that runs these CLIs every day. Most of the
 behaviour below exists because a real run failed without it ([battle-tested quirks](docs/gotchas.md)).
 
 ## Features
 
+- **One app.** `brainyard` opens a full-screen app in the terminal, and `brainyard web` the same
+  screen in a browser: the agents and their subscription limits, the panes, the sessions and
+  what they cost. Enter takes you into a pane and Ctrl+Q brings you back; the wall shows several
+  panes live, side by side, and you type into any of them.
+- **Panes that outlive you.** A pane is a CLI session in tmux: it keeps running when the
+  terminal, the app or your program goes away. Read its screen, type into it, take it full
+  screen, come back; closing it keeps the conversation, so it can be continued.
 - **Status in one command.** Installed? Which version? Signed in, and how? Which models and
   reasoning efforts? All of it free where the CLI allows. `--live` proves each CLI with a
   one-word call; for Claude Code it also shows how much of your 5-hour and 7-day windows is used.
@@ -58,17 +65,16 @@ behaviour below exists because a real run failed without it ([battle-tested quir
   global config touched.
 - **Typed failures.** `usage_limit` (with the reset time), `rate_limited`, `not_logged_in`,
   `network`… so you know whether to wait a minute, wait until 6:50pm or sign in.
-- **One app.** `brainyard` opens a full-screen app in the terminal: agents and their limits,
-  panes, sessions and usage. Enter takes you into a pane, Ctrl+Q brings you back. `brainyard web`
-  shows the same app in a browser.
-- **Dashboard.** `brainyard ui` opens status cards and a playground over a local, token-guarded
-  HTTP API that other languages can use too.
+- **Usage.** What each subscription has left, read without a paid call where the CLI allows
+  (Claude Code's from its own cache), and the tokens and cost of a folder's sessions.
+- **Dashboard and HTTP API.** A playground to ask and run agents in a browser, over a local,
+  token-guarded HTTP API that other languages can use too.
 - **No runtime dependencies.**
 
 ## Install
 
 ```sh
-npm install -g @antondanv/brainyard-cli    # the `brainyard` command and the dashboard
+npm install -g @antondanv/brainyard-cli    # the `brainyard` command: the app, the commands, the dashboard
 npm install @antondanv/brainyard           # the library alone
 ```
 
@@ -81,41 +87,14 @@ You need Node.js 22+ and at least one agent CLI:
 | Antigravity | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | run `agy` once |
 | OpenCode | `npm install -g opencode-ai` | `opencode auth login` for a provider (its free models need none) |
 
-## Command line
+## The app
 
-**The app.** `brainyard` in a terminal is one full-screen app: a card for each agent with its
-subscription limits as bars (Claude Code's are the ones its own `/usage` fetched last); the
-panes with what each CLI does, its memory and how long it has been quiet; sessions running in
-other folders; and this folder's sessions with their tokens and cost. It keeps reading them
-while it is open and makes no paid call of its own. It speaks English or Russian (Settings).
-
-```console
-$ brainyard
-Brainyard 0.2.0  [1 Overview]  2 Wall   3 Sessions   4 Usage   5 Settings      ⚠ 1 waiting · 2 panes
-╭─ Claude Code ────────────────────────── ready ─╮╭─ Codex ──────────────────────────────── ready ─╮
-│ 2.1.280  claude.ai · max                       ││ 0.153.4  ChatGPT                               │
-│ 5h       ███████████████████▊░░░░░░░░░░░░  62% ││ 5h       ██████████▉░░░░░░░░░░░░░░░░░░░░░  34% │
-│ weekly   ████████████████████████████████ 100% ││ weekly   █████████████████████████████▍░░  92% │
-╰────────────────────────────────── seen 7h ago ─╯╰────────────────────────────────── seen 3h ago ─╯
-╭─ Antigravity ────────────────────────── ready ─╮╭─ OpenCode ───────────────────── not installed ─╮
-│ 1.2.13  signed in                              ││ —  npm install -g opencode-ai                  │
-│ Gemini   ▎░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   1% ││                                                │
-│ Claude   ████████████▊░░░░░░░░░░░░░░░░░░░  40% ││                                                │
-╰────────────────────────────────────────────────╯╰────────────────────────────────────────────────╯
-╭─ Panes ─────────────────────────────────────────────────────────────────────── 2 panes · 405 MB ─╮
-│ ▌ ● auth refactor                      Claude Code  working                      active   285 MB │
-│   ● (no label) · ~/code/other          Codex        waiting: approval         quiet 12m   120 MB │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Running in other folders ─────────────────────────────────────────────────────────────────── 1 ─╮
-│   ● Nightly cleanup bg · ~/code/other                  Claude Code      3m  working              │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Sessions · ~/code/app ──────────────────────────────────────── 3 sessions · $4.23 · 31M tokens ─╮
-│   ● Auth refactor                   Claude Code     now  ▣ claude-1a2b3c4d        31M      $4.21 │
-│   ○ Fix the flaky test              Claude Code      3h                          1.1k      $0.02 │
-│   ○ Explain CRDTs                   Codex            2d                           15k   no price │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
- Enter go in (Ctrl+Q back) · x close · n new · ? help · q quit
-```
+`brainyard` in a terminal is one full-screen app; piped or in a script it prints the status
+table instead. A card for each agent shows its sign-in and its subscription limits as bars
+(Claude Code's are the ones its own `/usage` fetched last); then the panes, with what each CLI
+does, its memory and how long it has been quiet; sessions running in other folders; and this
+folder's sessions with their tokens and cost. It keeps reading all of it while it is open and
+makes no paid call of its own. It speaks English or Russian.
 
 Enter goes into the selected pane, full screen, and Ctrl+Q comes back; on an agent Enter starts
 a new pane of it, on a saved session it continues the session in a pane. `n` starts a new pane
@@ -124,45 +103,43 @@ Claude Code background session, `r` continues a saved session, Tab jumps between
 lists the keys and `q` quits; the panes keep running. Russian keyboard letters work by their
 place on the keyboard.
 
-Digits 1–5 (or `[` `]`) open its pages:
+Digits 1–5 (or `[` `]`) open its pages. **Wall** — the live screens of several panes side by
+side, the way a tiling compositor shows windows: a grid, one main tile and a stack, or columns
+(`l`). Arrows move the focus, `z` zooms the tile, `i` types into it (every key, Ctrl+C included,
+goes to its CLI until Ctrl+Q), Enter takes it full screen and `n` starts a new tile to type
+into. Each pane is made the size of its tile. A tile turns yellow while its agent waits for
+you; the header counts who waits, and the terminal rings when someone starts to.
 
-- **Wall** — the live screens of several panes side by side, the way a tiling compositor shows
-  windows: a grid, one main tile and a stack, or columns (`l`). Arrows move the focus, `z` zooms
-  the tile, `i` types into it (every key, Ctrl+C included, goes to its CLI until Ctrl+Q), Enter
-  takes it full screen and `n` starts a new tile to type into. Each pane is made the size of its
-  tile. A tile turns yellow while its agent waits for you; the header counts who waits, and the
-  terminal rings when someone starts to.
-- **Sessions** — what runs elsewhere and this folder's sessions; `/` filters; a card with the
-  tokens by model and the command that continues the session in its own CLI.
-- **Usage** — every subscription window as a bar, the folder's tokens and cost by CLI, and the
-  sessions that used the most.
-- **Settings** — the language (English, the default, or Russian), the theme (terminal, ocean,
-  ember, forest, contrast, mono), the accent, the wall's layout, the bell and the page to open
-  on, kept in `~/.config/brainyard/app.json`; `"colors"` there takes your own
-  (`"accent": "#ff8700"`, or a number of the 256).
+<img src="docs/assets/app-wall.png" width="860" alt="The wall: a Codex pane waiting for an approval and a Claude Code pane at work, side by side, each in its tile">
 
-```console
-Brainyard 0.2.0   1 Overview  [2 Wall]  3 Sessions   4 Usage   5 Settings      ⚠ 1 waiting · 2 panes
-╭─ Codex ─────────── waiting: approval · 120 MB ─╮╭─ Claude Code · auth refac… ─ working · 285 MB ─╮
-│Allow command? [y/n]                            ││Editing src/auth.ts…                            │
-│                                                ││                                                │
-╰─ i type · Enter full screen ─── codex-5e6f7a8b ─╯╰─ active ───────────────────── claude-1a2b3c4d ─╯
- ←→↑↓ focus · i type · Enter full screen · z zoom · l grid · x close · n new · ? help · q quit
-```
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/app-pane.png" alt="A pane full screen: Claude Code at work, and the bar below with the way back"><br><b>A pane</b>, full screen: every key goes to its CLI; Ctrl+Q — back.</td>
+<td width="50%"><img src="docs/assets/app-sessions.png" alt="The sessions page: a list with a filter and the selected session's card"><br><b>Sessions</b> — what runs elsewhere and this folder's sessions; <code>/</code> filters; a card with the tokens and the command that continues the session in its own CLI.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/assets/app-usage.png" alt="The usage page: every subscription window as a bar, the folder's tokens and cost by CLI, the sessions that used the most"><br><b>Usage</b> — every subscription window as a bar, the folder's tokens and cost by CLI, the sessions that used the most.</td>
+<td width="50%"><img src="docs/assets/app-settings.png" alt="The settings page: language, theme, accent, the wall's layout, the bell and the first page, with a preview"><br><b>Settings</b> — language, theme, accent, the wall's layout, the bell and the first page, kept in <code>~/.config/brainyard/app.json</code>, where <code>"colors"</code> takes your own.</td>
+</tr>
+</table>
 
-The app leaves the mouse to the terminal, so selecting and copying text works anywhere on it.
+The pictures are of `npm run demo`, the app on a made-up machine, in a browser; a terminal
+shows the same screen. In a terminal the app leaves the mouse to it, so selecting and copying
+text works anywhere.
 
-**In a browser.** `brainyard web` shows the same app in a browser on this machine: the server
-draws the frames a terminal would show and the page paints them cell for cell — the pages, the
-wall, the dialogs, the theme and the language are the same. Keys work as in the terminal. A
-click opens a tab, selects a row, focuses a tile or picks a setting; a double click is Enter; the
-wheel moves the selection; dragging selects text to copy. Enter on a pane shows its CLI full
-screen, with every key going to it and the wheel scrolling back through what it printed, until
-Ctrl+Q or a click on the bar below. `q` quits the app and the command with it; the panes keep
-running. The page listens on `127.0.0.1` behind the same token, `Host` and `Origin` guard as the
-[HTTP API](docs/http-api.md), which stays under `/api/`.
+### In a browser
 
-<img src="docs/assets/web-wall.png" width="860" alt="brainyard web: the wall in a browser — a Codex pane waiting for an approval and a Claude Code pane at work, side by side">
+`brainyard web` shows the same app in a browser on this machine: the server draws the frames a
+terminal would show and the page paints them cell for cell, so the pages, the wall, the
+dialogs, the theme and the language are the same. Keys work as in the terminal. A click opens a
+tab, selects a row, focuses a tile or picks a setting; a double click is Enter; the wheel moves
+the selection; dragging selects text to copy. Enter on a pane shows its CLI full screen, with
+every key going to it and the wheel scrolling back through what it printed, until Ctrl+Q or a
+click on the bar below. `q` quits the app and the command with it; the panes keep running. The
+same server has the dashboard at `/dashboard`. It listens on `127.0.0.1` behind the same token,
+`Host` and `Origin` guard as the [HTTP API](docs/http-api.md), which stays under `/api/`.
+
+## Command line
 
 **Status.** Piped or in a script, `brainyard` prints this table, as `brainyard status` does:
 
@@ -483,9 +460,13 @@ in `result.warnings`.
 
 ## Dashboard and HTTP API
 
-`brainyard ui` serves the dashboard shown at the top: status cards and a playground to ask
-questions or run agents with a live feed, hints, stop and "continue this session". **Live
-check** sends each CLI a one-word prompt and shows how much of Claude Code's subscription
+`brainyard ui` serves the dashboard, and `brainyard web` has it at `/dashboard`: status cards
+and a playground to ask questions or run agents with a live feed, hints, stop and "continue
+this session".
+
+<img src="docs/assets/dashboard.png" width="860" alt="The Brainyard dashboard: three status cards, and a Claude Code run that wrote fib.py, ran it and reported the output">
+
+**Live check** sends each CLI a one-word prompt and shows how much of Claude Code's subscription
 windows is used, or why a CLI did not answer:
 
 <img src="docs/assets/live-check.png" width="860" alt="Live check: Claude Code and Antigravity answered pong, Codex shows the error for a model its ChatGPT account cannot use; Claude Code also shows its 5-hour and 7-day subscription windows">
@@ -522,9 +503,12 @@ fixes, is in [`docs/gotchas.md`](docs/gotchas.md).
 
 ## How it is tested
 
-- **237 tests** run the real code against fake `claude`, `codex`, `agy` and `opencode`
-  executables that speak each dialect. Like the real CLIs, the fakes never exit while stdin is open, so a runner
-  that forgets to close it hangs the test instead of passing it.
+- **435 tests** run the real code against fake `claude`, `codex`, `agy` and `opencode`
+  executables that speak each dialect. Like the real CLIs, the fakes never exit while stdin is
+  open, so a runner that forgets to close it hangs the test instead of passing it.
+- **The app** is a pure function from its state to the rows of the screen, so its frames are
+  tested as they are; it is also driven end to end in a real tmux of the test's own (never the
+  `brainyard` server you work in), in a terminal and through `brainyard web` over HTTP.
 - **`npm run live`** runs every check against the real CLIs with the cheapest models: ask, a
   prompt starting with dashes, an agent run, a hint, resume, MCP, and the access matrix. Last
   run: Claude Code 2.1.280, Codex 0.153.4, Antigravity 1.2.13, all 21 checks passed for about $0.20.
