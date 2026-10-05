@@ -9,6 +9,7 @@ import {
   clipboardCommand,
   closePane,
   findPaneSession,
+  formatFields,
   listPanes,
   paneMemory,
   panesAvailable,
@@ -277,6 +278,14 @@ describe('the clipboard a pane copies to', () => {
     expect(clipboardCommand(env, 'linux')).toBeUndefined();
     expect(clipboardCommand({ ...env, BRAINYARD_COPY_COMMAND: 'my-copy' }, 'darwin')).toBe('my-copy');
     expect(clipboardCommand({ ...env, BRAINYARD_COPY_COMMAND: '' }, 'darwin')).toBeUndefined();
+  });
+});
+
+describe('a tmux listing', () => {
+  it('splits into fields whether tmux escapes the separator (3.4) or not', () => {
+    const fields = ['claude-1a2b3c4d', 'claude', 'Узел; метка', '/work/app'];
+    expect(formatFields(fields.join('\u001f'))).toEqual(fields);
+    expect(formatFields(fields.join('\\037'))).toEqual(fields);
   });
 });
 

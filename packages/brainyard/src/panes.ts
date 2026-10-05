@@ -106,6 +106,16 @@ export interface PaneSettings {
 
 const META = ['@brain', '@session', '@label', '@cwd', '@started'] as const;
 const SEP = '\u001f';
+
+/**
+ * The fields of one line of a `-F` listing. tmux 3.4 writes a control
+ * character in its format output as an octal escape, the separator as `\037`;
+ * later versions write it as it is.
+ */
+export function formatFields(line: string): string[] {
+  return line.replaceAll('\\037', SEP).split(SEP);
+}
+
 /** tmux refuses to start inside tmux, and a pane is not inside the terminal that started it. */
 const NESTING = ['TMUX', 'TMUX_PANE'];
 /** tmux takes at most 16 KB per command; hex input is three characters a byte. */
@@ -327,7 +337,7 @@ export async function listPanes(settings: PaneSettings = {}): Promise<PaneInfo[]
   for (const line of got.out.split('\n')) {
     if (!line.trim()) continue;
     const [name, brain, session, label, cwd, started, pid, command, created, activity, attached, width, height] =
-      line.split(SEP);
+      formatFields(line);
     if (!name) continue;
     const info: PaneInfo = {
       pane: name,
@@ -376,7 +386,7 @@ export async function capturePane(
   const got = await call(t, args);
   if (!got.ok) return undefined;
   const [head = '', ...rest] = got.out.split('\n');
-  const [width, height, x, y, visible, activity, history, mouse, mouseSgr, alternate] = head.split(SEP);
+  const [width, height, x, y, visible, activity, history, mouse, mouseSgr, alternate] = formatFields(head);
   const rows = Number(height) || 0;
   const historySize = Number(history) || 0;
   const scrollOffset = scrolled ? Math.min(historySize, Math.floor(settings.scroll!)) : 0;
