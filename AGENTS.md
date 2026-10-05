@@ -55,7 +55,8 @@ npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же д
   пользователь; чего не хватает — экспортируй из `packages/brainyard/src/index.ts` осознанно.
 - CLI видит исходники API без сборки: `paths` в `tsconfig.json`, alias в `vitest.config.ts`.
   Сборка — сначала API, потом CLI по его `dist/`.
-- README, README.ru, CHANGELOG и LICENSE лежат в корне; в пакеты их копирует `prepack`.
+- README, README.ru, CHANGELOG и LICENSE лежат в корне; в пакеты `prepack` копирует README (только
+  английский, ссылки и картинки — на тег `v<версия>`), CHANGELOG и LICENSE.
 - `docs/gotchas.md` — причуды CLI; `docs/http-api.md` — HTTP API (`brainyard serve`, `web` и дашборд).
 
 ## Правила
