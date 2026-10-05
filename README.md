@@ -128,7 +128,7 @@ Both listen on `127.0.0.1` behind the same token, `Host` and `Origin` guard as t
 
 ```console
 $ brainyard status
-Brainyard 0.1.0
+Brainyard 0.2.0
 
   ● Claude Code  2.1.280   ready         signed in with claude.ai, pro
   ● Codex        0.153.4   ready         signed in with ChatGPT · default model gpt-6-astra

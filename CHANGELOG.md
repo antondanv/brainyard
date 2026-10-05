@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-10-05
 
 ### Added
 
@@ -132,4 +132,5 @@ First public release.
   token-guarded HTTP API with server-sent events.
 - Tests against fake CLIs, and `npm run live` for checks against the real ones.
 
+[0.2.0]: https://github.com/antondanv/brainyard/releases/tag/v0.2.0
 [0.1.0]: https://github.com/antondanv/brainyard/releases/tag/v0.1.0

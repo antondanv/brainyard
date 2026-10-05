@@ -1,6 +1,6 @@
 {
   "name": "@antondanv/brainyard-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The brainyard command for Claude Code, Codex, Antigravity and OpenCode: one app in the terminal and in a browser — agents and their limits, panes, sessions, usage — and commands for status, asks, agent runs, panes and a local dashboard, built on @antondanv/brainyard.",
   "keywords": [
     "claude-code",
@@ -44,6 +44,6 @@
     "prepack": "npm run build && node ../../scripts/package-files.mjs"
   },
   "dependencies": {
-    "@antondanv/brainyard": "0.1.0"
+    "@antondanv/brainyard": "0.2.0"
   }
 }
