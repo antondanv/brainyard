@@ -38,6 +38,9 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      # Both are built up front: the CLI is built against the API's build, also when the
+      # API's version is on npm already and its own prepack does not run.
+      - run: npm run build
       # The API goes first: the CLI depends on that exact version. prepack builds each
       # package and copies the README, changelog and licence in. Trusted publishing needs
       # no token and adds provenance; each package has its own trusted publisher on npm.
@@ -48,7 +51,8 @@ jobs:
           for pkg in packages/brainyard packages/cli; do
             name=$(node -p "require('./$pkg/package.json').name")
             version=$(node -p "require('./$pkg/package.json').version")
-            if npm view "$name@$version" version >/dev/null 2>&1; then
+            # The version's own document: a new package's page takes minutes to appear.
+            if curl -fsS -o /dev/null "https://registry.npmjs.org/$name/$version"; then
               echo "$name@$version is on npm already"
             else
               npm publish -w "$pkg" --access public
