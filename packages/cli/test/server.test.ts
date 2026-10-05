@@ -138,7 +138,9 @@ describe('dashboard server', () => {
     });
     expect(created.status).toBe(201);
     const run = JSON.parse(created.body);
-    expect(run).toMatchObject({ brain: 'claude', state: 'running', steerable: true });
+    expect(run).toMatchObject({ brain: 'claude', steerable: true });
+    // A fast fake can finish within the moment the server waits for a refusal.
+    expect(['running', 'done']).toContain(run.state);
     expect(run.cwd).toMatch(/brainyard-playground-/);
 
     const stream = await call(`/api/runs/${run.id}/events`, { headers: auth });

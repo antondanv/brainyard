@@ -64,7 +64,10 @@ describe('README', () => {
 
   it('every picture in docs/assets is shown', () => {
     const shown = new Set(READMES.flatMap((name) => pictures(read(name))));
-    const unused = readdirSync(join(root, 'docs/assets')).filter((file) => !shown.has(`docs/assets/${file}`));
+    // Hidden files are the system's (.DS_Store), not pictures.
+    const unused = readdirSync(join(root, 'docs/assets')).filter(
+      (file) => !file.startsWith('.') && !shown.has(`docs/assets/${file}`),
+    );
     expect(unused).toEqual([]);
   });
 
