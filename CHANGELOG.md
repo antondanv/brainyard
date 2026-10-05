@@ -62,8 +62,10 @@ All notable changes to this project are documented here. The format follows
   every key going to it and the wheel scrolling through its history, until Ctrl+Q; a paste
   reaches it as one paste. `q` quits the app and the command; the panes keep running. The
   dashboard and its playground are on the same server, at `/dashboard`.
-- `npm run demo`: the app in a browser on a made-up machine; `npm run screenshots` takes the
-  README's pictures of it again, page by page, in English and in Russian (with Google Chrome).
+- `npm run demo`: the app on a made-up machine, in a browser or with `--terminal` in this
+  terminal, and the dashboard with the same made-up CLIs; `npm run screenshots` takes the
+  README's pictures of it again, page by page, in English and in Russian (with Google Chrome), and
+  with `--windows` on a Mac the app in a Terminal window and in a Chrome window.
 - `brainyard serve`: the HTTP API alone, with no browser. Its token can come from
   `$BRAINYARD_TOKEN`, and `--json` prints `{url, port, token}` for the program that starts it.
   The API adds `GET /api/sessions`, `GET /api/sessions/live`, `POST /api/sessions/:id/stop`,

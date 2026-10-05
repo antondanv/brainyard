@@ -23,8 +23,9 @@ npm run dev -- status                 # CLI из исходников
 npm run typecheck && npm test && npm run lint && npm run build   # перед «на проверке»
 npm run format                        # biome check --write
 npm run live                          # проверка на настоящих CLI — тратит деньги, только по просьбе
-npm run demo                          # приложение в браузере на выдуманных данных
-npm run screenshots                   # заново снять картинки README (docs/assets/app-*.png, EN и RU; нужен Chrome)
+npm run demo                          # приложение в браузере на выдуманных данных; --terminal — в этом терминале
+npm run screenshots                   # заново снять картинки README (docs/assets, EN и RU; нужен Chrome)
+npm run screenshots -- --windows      # и окна Terminal и Chrome (только Mac; окна на секунды берут фокус — не печатай)
 npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же для packages/brainyard)
 ```
 
@@ -49,7 +50,8 @@ npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же д
   терминала, `web.ts` — тот же экран в браузере (кадры подписчикам, вместо `tmux attach` — экран
   панели с вводом до Ctrl+Q), `mouse.ts` — куда пришёлся щелчок (клетка → вкладка, строка,
   плитка, настройка). Экран — чистая функция: веб рисует те же кадры. `npm run demo` — приложение
-  в браузере на выдуманной машине (мир `test/tui-world.ts`): для скриншотов README. Тесты команды — `test/run-cli.ts`:
+  на выдуманной машине (мир `test/tui-world.ts`), в браузере или с `--terminal` в терминале, и
+  дашборд на ней же: для скриншотов README. Тесты команды — `test/run-cli.ts`:
   он всегда задаёт тестовый сокет tmux. API берёт только из `@antondanv/brainyard`, как внешний
   пользователь; чего не хватает — экспортируй из `packages/brainyard/src/index.ts` осознанно.
 - CLI видит исходники API без сборки: `paths` в `tsconfig.json`, alias в `vitest.config.ts`.

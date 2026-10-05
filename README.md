@@ -6,7 +6,7 @@
 
 **One interface to the coding agents you already have: Claude Code, Codex, Antigravity and OpenCode.**
 
-One app to watch and drive them, in the terminal or in a browser, and one API to call them from
+An app to watch and drive them, in a terminal or in a browser, and an API to drive them from
 your own program: status and subscription limits, one-shot answers, runs with a live feed,
 sessions you come back to, and CLI sessions in tmux panes that outlive whatever started them.
 
@@ -18,67 +18,24 @@ sessions you come back to, and CLI sessions in tmux panes that outlive whatever 
 
 **English** · [Русский](README.ru.md)
 
-<img src="docs/assets/app-overview.png" width="860" alt="The Brainyard app: a card for each agent with its subscription limits as bars, the panes and what each CLI does, a session running in another folder, and this folder's sessions with their tokens and cost">
+<img src="docs/assets/app-terminal.png" width="860" alt="The Brainyard app in a terminal window: a card for each agent with its subscription limits as bars, the panes and what each CLI does, a session running in another folder, and this folder's sessions with their tokens and cost">
 
 </div>
 
-## Why
+## Two packages
 
-Claude Code, Codex, Antigravity and OpenCode are all excellent headless agents, and each speaks a
-different dialect: different flags, different stream formats, different ways to resume a
-session, pass an MCP server, pick an effort level or report a usage limit. Each also has quirks
-that only show up in real runs: a prompt starting with `---` read as a command-line option, a
-CLI that never exits because its stdin is still open, a turn that ends silently after a refused
-tool.
-
-Brainyard gives them one API. The same options, the same events and the same errors for all
-of them, with the workarounds built in. It drives the CLIs you installed with your own accounts.
-It runs no service, calls no model API and holds no keys.
-
-It was extracted from a production system that runs these CLIs every day. Most of the
-behaviour below exists because a real run failed without it ([battle-tested quirks](docs/gotchas.md)).
-
-## Features
-
-- **One app.** `brainyard` opens a full-screen app in the terminal, and `brainyard web` the same
-  screen in a browser: the agents and their subscription limits, the panes, the sessions and
-  what they cost. Enter takes you into a pane and Ctrl+Q brings you back; the wall shows several
-  panes live, side by side, and you type into any of them.
-- **Panes that outlive you.** A pane is a CLI session in tmux: it keeps running when the
-  terminal, the app or your program goes away. Read its screen, type into it, take it full
-  screen, come back; closing it keeps the conversation, so it can be continued.
-- **Status in one command.** Installed? Which version? Signed in, and how? Which models and
-  reasoning efforts? All of it free where the CLI allows. `--live` proves each CLI with a
-  one-word call; for Claude Code it also shows how much of your 5-hour and 7-day windows is used.
-- **`ask()`.** One prompt, one answer, isolated from your project: no `CLAUDE.md`, hooks or
-  MCP servers leaking into the prompt.
-- **`start()` / `run()`.** An agent in a folder, streaming one closed list of events
-  (`message`, `command`, `file_write`, `tool_call`…) with a human-readable line for each.
-- **Steering.** `hint()` sends a message to an agent while it works (Claude Code,
-  Antigravity, OpenCode). `stop()` stops it and everything it started.
-- **Sessions.** Every run returns a `sessionId`; pass it as `resume` to continue.
-- **Models and effort.** Asked from each CLI itself and checked before a run: Claude Code
-  silently ignores an effort it does not know, so you would pay for something you did not pick.
-- **Access levels.** `full`, `workspace` and `readonly`, mapped to each CLI's own permission and
-  sandbox flags. Verified live, including "nothing outside the folder gets written".
-- **MCP servers per run.** One config shape, delivered the way each CLI needs it, with no
-  global config touched.
-- **Typed failures.** `usage_limit` (with the reset time), `rate_limited`, `not_logged_in`,
-  `network`… so you know whether to wait a minute, wait until 6:50pm or sign in.
-- **Usage.** What each subscription has left, read without a paid call where the CLI allows
-  (Claude Code's from its own cache), and the tokens and cost of a folder's sessions.
-- **Dashboard and HTTP API.** A playground to ask and run agents in a browser, over a local,
-  token-guarded HTTP API that other languages can use too.
-- **No runtime dependencies.**
-
-## Install
+| Package | What is in it | For |
+|---|---|---|
+| `@antondanv/brainyard-cli` | The full one: the `brainyard` command — the app in a terminal, `brainyard web` in a browser, commands for scripts and a local HTTP API | You, at the keyboard |
+| `@antondanv/brainyard` | The light one: the API alone, with no runtime dependencies — status, asks, runs, sessions, panes, usage | Your program |
 
 ```sh
-npm install -g @antondanv/brainyard-cli    # the `brainyard` command: the app, the commands, the dashboard
-npm install @antondanv/brainyard           # the library alone
+npm install -g @antondanv/brainyard-cli    # the app, the browser, the commands
+npm install @antondanv/brainyard           # the API for your program
 ```
 
-You need Node.js 22+ and at least one agent CLI:
+The command is built on the API, so both say and do the same. You need Node.js 22+ and at least
+one agent CLI:
 
 | CLI | Install | Sign in |
 |---|---|---|
@@ -86,6 +43,22 @@ You need Node.js 22+ and at least one agent CLI:
 | Codex | `npm install -g @openai/codex` | `codex login` |
 | Antigravity | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | run `agy` once |
 | OpenCode | `npm install -g opencode-ai` | `opencode auth login` for a provider (its free models need none) |
+
+## Why
+
+Claude Code, Codex, Antigravity and OpenCode are excellent agents, and each speaks its own
+dialect: its own flags, stream format and way to resume a session, pass an MCP server, pick an
+effort or report a usage limit. Each also has quirks that only show up in real runs: a prompt
+starting with `---` read as a command-line option, a CLI that never exits because its stdin is
+still open, a turn that ends silently after a refused tool.
+
+Brainyard gives them one face. For you, one app shows every agent, what is left of its
+subscription, its sessions and its live panes. For your program, one API has the same options,
+events and errors for all four, with the workarounds built in. It drives the CLIs you installed,
+with your own accounts: it runs no service, calls no model API and holds no keys.
+
+It was extracted from a production system that runs these CLIs every day. Most of what follows
+exists because a real run failed without it ([battle-tested quirks](docs/gotchas.md)).
 
 ## The app
 
@@ -123,21 +96,31 @@ you; the header counts who waits, and the terminal rings when someone starts to.
 </tr>
 </table>
 
-The pictures are of `npm run demo`, the app on a made-up machine, in a browser; a terminal
-shows the same screen. In a terminal the app leaves the mouse to it, so selecting and copying
-text works anywhere.
+In a terminal the app leaves the mouse to it, so selecting and copying text works anywhere. The
+pictures are of `npm run demo`, the app on a made-up machine.
 
 ### In a browser
 
-`brainyard web` shows the same app in a browser on this machine: the server draws the frames a
+`brainyard web` opens the same app in a browser on this machine. The server draws the frames a
 terminal would show and the page paints them cell for cell, so the pages, the wall, the
-dialogs, the theme and the language are the same. Keys work as in the terminal. A click opens a
-tab, selects a row, focuses a tile or picks a setting; a double click is Enter; the wheel moves
-the selection; dragging selects text to copy. Enter on a pane shows its CLI full screen, with
-every key going to it and the wheel scrolling back through what it printed, until Ctrl+Q or a
-click on the bar below. `q` quits the app and the command with it; the panes keep running. The
-same server has the dashboard at `/dashboard`. It listens on `127.0.0.1` behind the same token,
-`Host` and `Origin` guard as the [HTTP API](docs/http-api.md), which stays under `/api/`.
+dialogs, the theme and the language are the same.
+
+<img src="docs/assets/app-browser.png" width="860" alt="The same app in a Chrome window at 127.0.0.1:4747: the agents' cards, the panes and the sessions, as in the terminal">
+
+Keys work as in the terminal. A click opens a tab, selects a row, focuses a tile or picks a
+setting; a double click is Enter; the wheel moves the selection; dragging selects text to copy.
+Enter on a pane shows its CLI full screen, with every key going to it and the wheel scrolling
+back through what it printed, until Ctrl+Q or a click on the bar below. `q` quits the app and
+the command with it; the panes keep running.
+
+The same server has the dashboard at `/dashboard` (`brainyard ui` serves it alone): a status
+card for each CLI and a playground to ask a question or run an agent with a live feed, hints,
+stop and "continue this session".
+
+<img src="docs/assets/dashboard.png" width="860" alt="The dashboard: a status card for each of the four CLIs, with version, account, binary, capabilities and models, and the playground below with a prompt to ask Claude Code">
+
+Both listen on `127.0.0.1` behind the same token, `Host` and `Origin` guard as the
+[HTTP API](#http-api), which stays under `/api/`.
 
 ## Command line
 
@@ -251,16 +234,30 @@ Brains are `claude`, `codex`, `antigravity` (alias `agy`) and `opencode`. `brain
 
 ## Library
 
+`@antondanv/brainyard` is what the app is built on, and all it does is a function your program
+can call. Each takes a `brain` — `claude`, `codex`, `antigravity` or `opencode` — and the same
+options for all four.
+
+### Status and one-shot answers
+
 ```ts
-import { ask, run, start, status } from '@antondanv/brainyard';
+import { ask, status } from '@antondanv/brainyard';
 
 // Who is ready? Free checks; `live: true` adds a one-word call to each.
 const { ready } = await status(); // ['claude', 'codex', 'antigravity', 'opencode']
 
 // One prompt, one answer.
 const { text, costUsd } = await ask('codex', 'One-line summary of RFC 9110?', { effort: 'low' });
+```
 
-// An agent in a folder, event by event.
+`ask()` runs in a fresh temporary folder, read-only and without your project's `CLAUDE.md`,
+hooks or MCP servers, and throws a `BrainyardError` with a `kind` on any failure.
+
+### An agent in a folder
+
+```ts
+import { run, start } from '@antondanv/brainyard';
+
 const agent = start({
   brain: 'claude',
   cwd: './app',
@@ -282,7 +279,10 @@ if (!result.ok) console.error(result.error); // { kind: 'usage_limit', resetsAt:
 await run({ brain: 'claude', cwd: './app', resume: result.sessionId, prompt: 'Now add a benchmark' });
 ```
 
-MCP servers for one run:
+`hint()` reaches Claude Code, Antigravity and OpenCode while they work; `stop()` stops the
+agent and everything it started. `result` rejects only when the run never started (bad options,
+CLI not installed); once the CLI has started, it resolves: check `result.ok`. MCP servers for
+one run go in one shape, delivered the way each CLI needs them, with no global config touched:
 
 ```ts
 await run({
@@ -294,105 +294,108 @@ await run({
 });
 ```
 
-`result` rejects only when the run never started (bad options, CLI not installed). Once the CLI
-has started, it resolves: check `result.ok`. `ask()` throws a `BrainyardError` with a `kind` on
-any failure. More in [`examples/`](examples).
+More in [`examples/`](examples).
 
-### Saved background sessions
+### Sessions you come back to
 
-`stopSession({ brain: 'claude', sessionId, cwd })` stops a saved Claude Code
-background session with `claude stop`. It refreshes the session's short id and
-checks its folder first. The conversation stays in Claude Code's history and can
-be opened again with `open({ brain: 'claude', resume: sessionId, cwd })`.
-It returns `stopped` or `not-running`; a CLI failure throws `BrainyardError`.
-Sessions in tmux panes use `closePane()` instead.
+```ts
+import { liveSessions, open, sessions } from '@antondanv/brainyard';
 
-### Live session status
+// This folder's sessions in every CLI, newest first; a running one has `live`.
+for (const session of await sessions({ cwd: './app' })) {
+  console.log(session.brain, session.id, session.title, session.live?.status);
+}
 
-`liveSessions()` reads the current turn from each CLI. Codex rollouts are replayed
-once and then read incrementally, so long turns retain their state. Pending
-questions and approvals stop waiting when their matching response arrives.
-Completed or interrupted Codex turns leave the live list.
+// What runs on the machine right now, and who waits for you.
+const waiting = (await liveSessions()).filter((session) => session.live?.status === 'waiting');
 
-Recent Codex versions omit native command approvals from their rollout. Pass
-`liveSessions({ panes: {} })` to check current Codex dialogs on Brainyard's tmux
-server as well, or supply `panes: { socket }` for a separate server. Only the
-current viewport is read. Outside these panes, approval visibility depends on
-what the CLI persists in its rollout.
+// The CLI itself in this terminal, until the person leaves it; then the way back in.
+const { sessionId } = await open({ brain: 'claude', cwd: './app', name: 'review', prompt: 'Review the open PR' });
+await open({ brain: 'claude', cwd: './app', resume: sessionId });
+```
 
-### Subscription limits and saved session usage
+`sessions()` lists what the CLI's own picker lists: headless runs stay out unless
+`headless: true`. `liveSessions()` reads each CLI's current turn: `busy`, `waiting` (and what
+for) or `idle`. Recent Codex versions leave their approval dialogs out of the rollout, so
+`liveSessions({ panes: {} })` also reads the dialogs on screen in Brainyard's panes.
+`open({ background: true })` starts a Claude Code background session, and
+`stopSession({ brain: 'claude', sessionId, cwd })` stops it with `claude stop`; the
+conversation stays and can be opened again.
+
+### Panes
+
+```ts
+import { capturePane, closePane, listPanes, sendToPane, startPane } from '@antondanv/brainyard';
+
+// A CLI session in tmux: it keeps running when this program exits.
+const { pane } = await startPane({ brain: 'claude', cwd: './app', label: 'flaky test', prompt: 'Fix the flaky test' });
+
+const screen = await capturePane(pane); // its rows with their colours, the cursor, the size
+await sendToPane(pane, 'Run it ten times first');
+await sendToPane(pane, '\r'); // Enter as a key of its own, as a person presses it
+
+for (const each of await listPanes()) console.log(each.pane, each.brain, each.label, each.activityAt);
+
+await closePane(pane); // the CLI ends; its conversation can be resumed
+```
+
+Panes live on a tmux server of their own (`tmux -L brainyard`), so they outlive the terminal,
+the app and your program, and the app, `brainyard pane …` and your program all see the same
+ones. `attachPane(pane)` shows a pane full screen in this terminal until Ctrl+Q;
+`resizePane()` fits it to your view; `findPaneSession()` finds the session a Codex,
+Antigravity or OpenCode pane started (Claude Code's is known at once); `panesAvailable()` says
+whether tmux is there.
+
+### Usage and subscription limits
 
 ```ts
 import { usage } from '@antondanv/brainyard';
 
-const report = await usage({ cwd: './app', prices }); // your dollars-per-million model prices
-for (const session of report.sessions) {
-  console.log(session.brain, session.id, session.usage, session.costUsd, session.costSource);
-}
-for (const brain of report.brains) {
-  console.log(brain.brain, brain.limits, brain.limitsObservedAt, brain.detail);
-}
+const report = await usage({ cwd: './app', prices }); // your dollars per million tokens, per model
+for (const session of report.sessions) console.log(session.brain, session.id, session.usage, session.costUsd);
+for (const brain of report.brains) console.log(brain.brain, brain.limits, brain.limitsObservedAt);
 
-const one = await usage({ cwd: './app', brains: ['codex'], sessionId, prices });
-const subscriptions = await usage({ brains: ['antigravity', 'opencode'], limit: 0 });
-const saved = await usage({ cwd: './app', offline: true, prices }); // stores only
-const limits = await usage({ brains: ['claude'], live: true, limit: 0 });
+const limitsOnly = await usage({ limit: 0 }); // the account's windows, no sessions
 ```
 
-`usage()` reads saved sessions of `cwd` (the current folder by default), across
-Claude Code, Codex, Antigravity and OpenCode. Like `sessions()`, it excludes headless
-runs unless `headless: true`, returns at most 200 per CLI, and accepts store overrides
-in `homes`. `sessionId` selects a specific session in that folder; `limit: 0` reads only
-account limits. OpenCode's store is `$XDG_DATA_HOME/opencode` or `~/.local/share/opencode`.
+`usage()` reads the saved sessions of `cwd` (the current folder by default) in all four CLIs,
+and the windows of each subscription:
 
-| CLI | Saved session tokens and cost | Subscription limits |
+| CLI | Tokens and cost of saved sessions | Subscription limits |
 |---|---|---|
 | Claude Code | Whole transcript, counted once per message id; estimate from `prices` | What Claude Code itself fetched last (its `/usage`), kept in `~/.claude.json`; `rate_limit_event` with `live: true` |
 | Codex | Last cumulative rollout total; cost by each turn's model | Freshest rollout snapshots across the account's store |
 | Antigravity | Generation metadata in `conversations/<id>.db`; estimate from `prices` | `agy -p /usage --output-format json`: weekly and five-hour quotas by model group |
-| OpenCode | Assistant messages in `opencode.db`, or retained session totals; reported positive cost or estimate from `prices` | OpenCode Go API: rolling, weekly and monthly subscription windows |
+| OpenCode | Assistant messages in `opencode.db`, or retained session totals; reported cost or estimate from `prices` | OpenCode Go API: rolling, weekly and monthly windows |
 
-Limits use fractional `utilization` (`0.95` means 95%), optional `windowMinutes`,
-Unix-second `resetsAt`, and `limitId` for separate quota buckets. Antigravity also
-provides `group` and `label`, and so do Claude Code's per-model weekly windows. Their
-source (`rollout`, `live`, `cli`, `api` or `cache`) and
-observation time accompany the snapshot; an old snapshot is not a live check.
-Limits apply to the account and are independent of the requested folder or session.
+- **No model is called** unless you pass `live: true`: one minimal, isolated Claude call with a
+  30-second timeout, which can cost money. Antigravity and OpenCode Go answer metadata requests
+  without a turn; `offline: true` skips those too and reads the stores only.
+- **Options.** `brains` picks the CLIs, `sessionId` one session, `limit` the sessions per CLI
+  (200 by default, `0` for the limits alone), `limits: false` the sessions alone (every
+  window comes back `not_requested`), `headless: true` adds headless runs, `homes` other stores.
+- **Windows** carry `utilization` as a fraction (`0.95` is 95%), `windowMinutes`, `resetsAt` in
+  Unix seconds, a `limitId` per quota bucket and, for Antigravity and Claude Code's per-model
+  windows, `group` and `label`. Their source and the time they were seen come along: an old
+  snapshot is not a live check, and a window whose reset has passed says nothing about now.
+- **Claude Code's windows** are read for free from its global file (`~/.claude.json`, or the
+  one in `CLAUDE_CONFIG_DIR`); a cache of another account than the one signed in is left out
+  (`limitsUnavailable: 'other_account'`).
+- **OpenCode Go** takes `OPENCODE_GO_API_KEY` or `OPENCODE_API_KEY`, then the keys for
+  `opencode-go`/`opencode` in its `auth.json` (or `OPENCODE_AUTH_CONTENT`); an `apiKey` in
+  OpenCode's config wins over a stored one. Antigravity needs a signed-in CLI 1.1.11 or later
+  and runs `/usage` in a private empty folder.
+- **Nothing is passed off as zero.** Data that cannot be read is `null` with a reason
+  (`unavailableReason`, `limitsUnavailable`, `detail`); a total that cannot be priced is
+  `null`. `byModel` splits each session by model. Estimates describe model usage, not what the
+  subscription costs.
 
-By default, Antigravity and OpenCode Go fetch subscription metadata without a model
-turn. Antigravity needs a signed-in CLI version 1.1.11 or later and runs `/usage` in
-a private empty directory. `homes.antigravity` selects saved conversations; quotas
-belong to the active CLI login. OpenCode Go uses `OPENCODE_GO_API_KEY` or
-`OPENCODE_API_KEY`, then API keys for `opencode-go`/`opencode` in its `auth.json`
-(or `OPENCODE_AUTH_CONTENT`). Provider `options.apiKey` from global, explicit,
-project or inline OpenCode config can override the stored key; `{env:NAME}` is
-supported. A missing key or Go subscription returns an explanation. `offline: true`
-skips both metadata requests and reads saved stores only; it cannot be combined with
-`live: true`. `limits: false` reads the sessions alone and every CLI's windows come back
-`not_requested`: for a program that reads the windows on a schedule of its own.
+### Reference
 
-Claude Code keeps the windows it fetched last (when its `/usage` shows them) in its
-global file, `~/.claude.json`, or `.claude.json` inside `CLAUDE_CONFIG_DIR` when that is
-set: `usage()` reads them there for free, with the time they were fetched, and leaves a
-cache of another account out (`limitsUnavailable: 'other_account'`). A window whose reset time has passed since then says nothing
-about now.
+The options of `start()`, `run()` and `ask()`, what `access` means in each CLI, the events, and what
+each CLI can do.
 
-`live: true` makes one isolated, minimal Claude call with a 30-second timeout by
-default and can incur a charge. It keeps stored conversations intact. An unsuccessful
-call can still return windows alongside `error`. `commands`, `env`, `timeoutMs` and
-`signal` control CLI quota checks; `env`, `timeoutMs` and `signal` also control the Go
-request. Default timeouts are 30 seconds for Claude and Antigravity, 10 seconds for
-Go. Without `live`, no inference call is made.
-
-`usage` and `limits` are `null` when unavailable, with `unavailableReason` or
-`limitsUnavailable`/`detail` explaining why. Older Antigravity conversations without
-readable generator metadata remain unknown. `byModel` splits each session's counters
-and costs. Pass `prices` as in `run()`; OpenCode model keys are `provider/model`.
-If any part cannot be priced, the total cost is `null`. OpenCode providers without
-catalog prices can record a zero cost, so a zero alongside nonzero tokens also needs
-`prices`. Estimates describe model usage; they do not measure subscription payments.
-
-### Options
+#### Options
 
 | Option | Default | |
 |---|---|---|
@@ -409,7 +412,7 @@ catalog prices can record a zero cost, so a zero alongside nonzero tokens also n
 | `timeoutMs` | none | A run killed halfway is paid for in full, so there is no default limit |
 | `signal`, `onEvent`, `env`, `extraArgs`, `command`, `prices`, `includeRaw` | | |
 
-### Access levels
+#### Access levels
 
 A headless agent has nobody to ask for permission, so a tool that needs approval is simply
 refused. Pick the level up front:
@@ -424,7 +427,7 @@ Checked with real runs on every CLI: in `workspace`, a file inside `cwd` gets wr
 write to the home directory fails. In `readonly`, nothing gets written. See
 [`scripts/live-check.ts`](scripts/live-check.ts).
 
-### Events
+#### Events
 
 Every CLI's stream becomes the same closed list. Each event has a `summary`: one line for
 humans, with paths shortened and secrets masked. `feed: false` marks ceremony that is true but
@@ -442,7 +445,7 @@ not news (a reasoning block, a successful tool result).
 | `error` / `stopped` | Something broke / the run was stopped |
 | `done` | Always last |
 
-### What each CLI can do
+#### What each CLI can do
 
 | | Claude Code | Codex | Antigravity | OpenCode |
 |---|:-:|:-:|:-:|:-:|
@@ -453,31 +456,26 @@ not news (a reasoning block, a successful tool result).
 | Lists its models | aliases | ✓ | ✓ | ✓ |
 | Web can be switched off | ✓ | ✓ | — (warns) | ✓ |
 | Shell can be switched off | ✓ | sandboxed instead | — (warns) | ✓ |
-| Subscription windows (`usage`) | live call | rollout snapshots | `/usage` command | Go API |
+| Subscription windows (`usage`) | its `/usage` cache; a live call | rollout snapshots | `/usage` command | Go API |
 
 An option a CLI cannot honour is never dropped silently: it comes back as a `warning` event and
 in `result.warnings`.
 
-## Dashboard and HTTP API
+## HTTP API
 
-`brainyard ui` serves the dashboard, and `brainyard web` has it at `/dashboard`: status cards
-and a playground to ask questions or run agents with a live feed, hints, stop and "continue
-this session".
+`brainyard serve` runs the API alone, for scripts in any language: status, asks and runs with a
+live feed, sessions, stopping background ones, usage and panes. `brainyard web` and
+`brainyard ui` serve the same API under `/api/`. Every endpoint is in
+[`docs/http-api.md`](docs/http-api.md).
 
-<img src="docs/assets/dashboard.png" width="860" alt="The Brainyard dashboard: three status cards, and a Claude Code run that wrote fib.py, ran it and reported the output">
-
-**Live check** sends each CLI a one-word prompt and shows how much of Claude Code's subscription
-windows is used, or why a CLI did not answer:
-
-<img src="docs/assets/live-check.png" width="860" alt="Live check: Claude Code and Antigravity answered pong, Codex shows the error for a model its ChatGPT account cannot use; Claude Code also shows its 5-hour and 7-day subscription windows">
-
-The dashboard uses a small HTTP API you can call from any language; `brainyard serve` runs it
-alone, with no browser. Besides asks and runs, it lists sessions, stops background ones, reports
-usage and drives panes: [`docs/http-api.md`](docs/http-api.md).
+```sh
+BRAINYARD_TOKEN=secret-for-scripts brainyard serve --json
+{"url":"http://127.0.0.1:4747","port":4747,"token":"secret-for-scripts"}
+```
 
 The API can start agents on your machine, so it is guarded like it: it listens on `127.0.0.1`,
-every call needs the token printed at start, the `Host` header must name the server (against
-DNS rebinding), and writes are accepted only as same-origin JSON.
+every call needs the token, the `Host` header must name the server (against DNS rebinding), and
+writes are accepted only as same-origin JSON.
 
 ## Battle-tested quirks
 
@@ -503,7 +501,7 @@ fixes, is in [`docs/gotchas.md`](docs/gotchas.md).
 
 ## How it is tested
 
-- **435 tests** run the real code against fake `claude`, `codex`, `agy` and `opencode`
+- **440 tests** run the real code against fake `claude`, `codex`, `agy` and `opencode`
   executables that speak each dialect. Like the real CLIs, the fakes never exit while stdin is
   open, so a runner that forgets to close it hangs the test instead of passing it.
 - **The app** is a pure function from its state to the rows of the screen, so its frames are

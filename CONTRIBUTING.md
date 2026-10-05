@@ -76,7 +76,11 @@ compiles the API first and the CLI against its `dist/`.
 1. The new version in both packages, and the CLI's dependency on the API set to it
    (`npm version minor --no-git-tag-version --workspaces`, then the `@antondanv/brainyard`
    entry in `packages/cli/package.json`), and its section in `CHANGELOG.md`, committed to `main`.
-2. A GitHub release for the tag `v<version>`, with that section as its notes.
+2. The README's pictures taken again, so that they show the new version:
+   `npm run screenshots -- --windows` on a Mac, with Chrome; the windows take the focus for a few
+   seconds, so leave the keyboard alone. The version in the README's `brainyard status` example too.
+3. A GitHub release for the tag `v<version>`, with that section as its notes. npm shows the
+   README with its pictures from that tag.
 
 Publishing the release runs `.github/workflows/publish.yml`: the checks, then `npm publish`
 of both packages, the API first, through trusted publishing, with provenance. A tag that does
