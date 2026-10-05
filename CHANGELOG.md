@@ -71,6 +71,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- npm shows the English README, with its links and pictures pointing into the repository at the
+  release's tag: the Russian one is no longer packed, as npm showed it in place of the English.
+
 - `BrainId` and `BRAIN_IDS` include `'opencode'`. Code with an exhaustive
   `Record<BrainId, …>` needs an entry for it.
 - `sessions()` leaves out headless runs that are working right now unless `headless: true`, as
