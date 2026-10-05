@@ -3,7 +3,7 @@
 `brainyard serve` runs the API alone, for scripts in any language: status checks, one-shot
 answers, streamed agent runs, saved and running sessions, usage and subscription limits, and
 CLI sessions in tmux panes. `brainyard ui` serves the same API with the dashboard and opens it
-in a browser.
+in a browser; `brainyard web` serves it with the app's screen (see [The app's screen](#the-apps-screen)).
 
 ```sh
 BRAINYARD_TOKEN=secret-for-scripts brainyard serve --json
@@ -76,6 +76,36 @@ and pane functions; the README describes their fields.
   language); `enter: true` then presses Enter on its own after a short pause, so a CLI that
   reads a fast burst as a paste still sends the message. Attaching takes a terminal, so it is
   `brainyard pane attach`, not an endpoint.
+
+### The app's screen
+
+`brainyard web` adds four endpoints for the page that shows the app; scripts can use them too.
+They exist only on a server started by `brainyard web`.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/app/frames` | | Server-sent events: the app's frames, the bell, the end |
+| POST | `/api/app/input` | `{data, paste?}` | `{ok: true}`; `data` is what a terminal would send for the keys |
+| POST | `/api/app/mouse` | `{action, x, y}` | `{ok: true}`; `action` is `click`, `double`, `wheel-up` or `wheel-down`, `x` and `y` a cell from the top left, from 0 |
+| POST | `/api/app/resize` | `{width, height}` | `{ok: true}`; the page's size in cells |
+
+```text
+event: frame
+data: {"kind":"frame","width":120,"height":36,"rows":{"0":"\u001b[1mBrainyard\u001b[22m …","1":"…"},"full":true}
+
+event: frame
+data: {"kind":"frame","width":120,"height":36,"rows":{"17":"…"},"full":false}
+
+event: bell
+data: {"kind":"bell"}
+```
+
+- A `frame` has the rows that changed, by number, each exactly `width` cells with ANSI SGR
+  colours. `full: true` (the first frame, after a resize or Ctrl+L) means: forget the old rows.
+- `bell` — someone started waiting for you. `quit` — the person quit (`q`); the server stops.
+- Keys are bytes, as from a terminal in raw mode: `\r` is Enter, `\u001b[A` the up arrow,
+  `\u0011` Ctrl+Q. `paste: true` sends text as one bracketed paste, lines ending in `\r`.
+- Every page sees the same app: one screen, the last size sent wins.
 
 ### The event stream
 

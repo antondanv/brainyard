@@ -3,8 +3,9 @@
 Один слой над CLI агентов — Claude Code, Codex, Antigravity и OpenCode: статус, разовые вопросы,
 запуск в папке с живой лентой событий, сессии, к которым человек возвращается (`open`,
 `sessions`), и панели tmux, которые переживают программу. Из терминала, из TypeScript
-и из локального дашборда. Два пакета в одном репозитории (npm workspaces, одна версия):
-`@antondanv/brainyard` — только API, `@antondanv/brainyard-cli` — команда `brainyard` и дашборд.
+и из браузера. Два пакета в одном репозитории (npm workspaces, одна версия):
+`@antondanv/brainyard` — только API, `@antondanv/brainyard-cli` — команда `brainyard`, приложение
+в терминале и в браузере (`brainyard web`) и дашборд.
 Главный потребитель API — Treeyard (`../Treeyard`).
 
 ## Стек
@@ -22,6 +23,7 @@ npm run dev -- status                 # CLI из исходников
 npm run typecheck && npm test && npm run lint && npm run build   # перед «на проверке»
 npm run format                        # biome check --write
 npm run live                          # проверка на настоящих CLI — тратит деньги, только по просьбе
+npm run demo                          # приложение в браузере на выдуманных данных (скриншоты)
 npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же для packages/brainyard)
 ```
 
@@ -33,22 +35,26 @@ npm pack --dry-run -w packages/cli    # что уйдёт в npm (так же д
   - `src/sessions.ts`, `open.ts`, `panes.ts` — сохранённые сессии, интерактивный CLI, панели tmux.
   - `test/fixtures/` — фейковые claude, codex, agy и opencode; `test/helpers.ts` — общие и для тестов CLI.
 - `packages/cli/` — `@antondanv/brainyard-cli`: `src/main.ts` — команда `brainyard` (диспетчер,
-  status, models, ask, run, open, ui и serve), `src/panes.ts`, `sessions.ts`, `usage.ts` — panes и
+  status, models, ask, run, open, web, ui и serve), `src/panes.ts`, `sessions.ts`, `usage.ts` — panes и
   pane, sessions и stop, usage; `src/args.ts` — флаги, `src/format.ts` и `term.ts` — вывод;
-  `src/ui/` — дашборд и HTTP API; `src/tui/` — приложение (`brainyard` без аргументов):
+  `src/ui/` — HTTP API, дашборд (`dashboard.html`) и страница приложения (`app.html`: кадры по SSE,
+  клавиши байтами терминала, мышь по клеткам); `src/tui/` — приложение (`brainyard` без аргументов):
   `state.ts` — состояние и события, `update.ts` и `view.ts` — чистые `update(state, событие)` и
   `render(state) → строки` (шапка, клавиши, справка), `overview.ts` — обзор, `pages.ts` —
   стена, сессии, использование, настройки, `parts.ts` — коробки, колонки, точки состояния,
   `wall.ts` — раскладка плиток, `settings.ts` — темы и файл настроек, `i18n.ts` и `ru.ts` —
   языки (текст на английском — ключ; новый текст — сразу с русским, иначе падает
   `test/tui-i18n.test.ts`), `app.ts` — чтение по расписанию и эффекты, `terminal.ts` — экран
-  терминала. Экран — чистая функция: веб рисует те же кадры. Тесты команды — `test/run-cli.ts`:
+  терминала, `web.ts` — тот же экран в браузере (кадры подписчикам, вместо `tmux attach` — экран
+  панели с вводом до Ctrl+Q), `mouse.ts` — куда пришёлся щелчок (клетка → вкладка, строка,
+  плитка, настройка). Экран — чистая функция: веб рисует те же кадры. `npm run demo` — приложение
+  в браузере на выдуманной машине (мир `test/tui-world.ts`): для скриншотов README. Тесты команды — `test/run-cli.ts`:
   он всегда задаёт тестовый сокет tmux. API берёт только из `@antondanv/brainyard`, как внешний
   пользователь; чего не хватает — экспортируй из `packages/brainyard/src/index.ts` осознанно.
 - CLI видит исходники API без сборки: `paths` в `tsconfig.json`, alias в `vitest.config.ts`.
   Сборка — сначала API, потом CLI по его `dist/`.
 - README, README.ru, CHANGELOG и LICENSE лежат в корне; в пакеты их копирует `prepack`.
-- `docs/gotchas.md` — причуды CLI; `docs/http-api.md` — HTTP API (`brainyard serve` и дашборд).
+- `docs/gotchas.md` — причуды CLI; `docs/http-api.md` — HTTP API (`brainyard serve`, `web` и дашборд).
 
 ## Правила
 

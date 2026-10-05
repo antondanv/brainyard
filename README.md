@@ -59,7 +59,8 @@ behaviour below exists because a real run failed without it ([battle-tested quir
 - **Typed failures.** `usage_limit` (with the reset time), `rate_limited`, `not_logged_in`,
   `network`… so you know whether to wait a minute, wait until 6:50pm or sign in.
 - **One app.** `brainyard` opens a full-screen app in the terminal: agents and their limits,
-  panes, sessions and usage. Enter takes you into a pane, Ctrl+Q brings you back.
+  panes, sessions and usage. Enter takes you into a pane, Ctrl+Q brings you back. `brainyard web`
+  shows the same app in a browser.
 - **Dashboard.** `brainyard ui` opens status cards and a playground over a local, token-guarded
   HTTP API that other languages can use too.
 - **No runtime dependencies.**
@@ -150,6 +151,18 @@ Brainyard 0.2.0   1 Overview  [2 Wall]  3 Sessions   4 Usage   5 Settings      �
 ```
 
 The app leaves the mouse to the terminal, so selecting and copying text works anywhere on it.
+
+**In a browser.** `brainyard web` shows the same app in a browser on this machine: the server
+draws the frames a terminal would show and the page paints them cell for cell — the pages, the
+wall, the dialogs, the theme and the language are the same. Keys work as in the terminal. A
+click opens a tab, selects a row, focuses a tile or picks a setting; a double click is Enter; the
+wheel moves the selection; dragging selects text to copy. Enter on a pane shows its CLI full
+screen, with every key going to it and the wheel scrolling back through what it printed, until
+Ctrl+Q or a click on the bar below. `q` quits the app and the command with it; the panes keep
+running. The page listens on `127.0.0.1` behind the same token, `Host` and `Origin` guard as the
+[HTTP API](docs/http-api.md), which stays under `/api/`.
+
+<img src="docs/assets/web-wall.png" width="860" alt="brainyard web: the wall in a browser — a Codex pane waiting for an approval and a Claude Code pane at work, side by side">
 
 **Status.** Piped or in a script, `brainyard` prints this table, as `brainyard status` does:
 
@@ -253,6 +266,7 @@ Sessions of ~/Projects/Brainyard
 | `brainyard panes` | Live panes: CLI, session, memory, quiet time, folder (`--json`) |
 | `brainyard pane start\|attach\|show\|send\|close` | A CLI session in a tmux pane that outlives the terminal |
 | `brainyard usage [brain…]` | Subscription limits; tokens and cost of this folder's sessions (`--limits`, `--prices`, `--offline`, `--live`) |
+| `brainyard web` | The app in a browser, on `http://127.0.0.1:4747` (`--port`, `--no-open`) |
 | `brainyard ui` | The dashboard on `http://127.0.0.1:4747` |
 | `brainyard serve` | The HTTP API alone, for scripts in any language (`--json`, `$BRAINYARD_TOKEN`) |
 

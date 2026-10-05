@@ -51,6 +51,15 @@ All notable changes to this project are documented here. The format follows
   Russian), kept in
   `~/.config/brainyard/app.json` with your own colours. The header counts who waits for you, and
   the terminal rings when someone starts to.
+- `brainyard web`: the app in a browser on `127.0.0.1`, the same screen as in a terminal. The
+  server sends the frames as server-sent events (`GET /api/app/frames`, only the rows that
+  changed); keys go back as the bytes a terminal sends, clicks and the wheel by cell, and the
+  page's size (`POST /api/app/input`, `/mouse`, `/resize`), under the API's token, `Host` and
+  `Origin` guard. A click opens a tab, selects a row, focuses a tile or picks a setting; a double
+  click is Enter; the wheel moves the selection. Enter on a pane shows its CLI full screen with
+  every key going to it and the wheel scrolling through its history, until Ctrl+Q; a paste
+  reaches it as one paste. `q` quits the app and the command; the panes keep running.
+- `npm run demo`: the app in a browser on a made-up machine, for screenshots.
 - `brainyard serve`: the HTTP API alone, with no browser. Its token can come from
   `$BRAINYARD_TOKEN`, and `--json` prints `{url, port, token}` for the program that starts it.
   The API adds `GET /api/sessions`, `GET /api/sessions/live`, `POST /api/sessions/:id/stop`,
@@ -65,6 +74,8 @@ All notable changes to this project are documented here. The format follows
 - A session id may contain `_` (OpenCode's ids are `ses_…`).
 - `brainyard` without arguments prints the status table only without a terminal (piped, in a
   script); in a terminal it opens the app. `brainyard status` prints the table anywhere.
+- A pane taken full screen from the wall gets its tile's size back afterwards; it kept the
+  terminal's size.
 - `brainyard serve` is no longer another name for `brainyard ui`: it opens no browser. Without
   `--port`, both take 4747 or the next free port, and both stop on `SIGTERM` as on Ctrl+C.
 
