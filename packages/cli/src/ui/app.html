@@ -395,9 +395,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   const ARROWS = { ArrowUp: 'A', ArrowDown: 'B', ArrowRight: 'C', ArrowLeft: 'D', Home: 'H', End: 'F' };
   const CONTROL = { BracketLeft: '\x1b', Backslash: '\x1c', BracketRight: '\x1d', Space: '\x00', Slash: '\x1f', Digit2: '\x00', Digit6: '\x1e', Minus: '\x1f' };
   const selected = () => String(window.getSelection() || '');
+  // On a Mac, Option types characters (@ on a German keyboard), as Terminal and iTerm2 do by default.
+  const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
   function bytes(event) {
     const { key, code } = event;
+    // A dead key waits for the next one: the composed letter comes with compositionend.
+    if (key === 'Dead') return undefined;
+    // AltGr (Ctrl and Alt at once, on Windows) and Option on a Mac make characters: they are text.
+    if (event.altKey && (MAC || event.ctrlKey) && [...key].length === 1) return key;
     if (key === 'Tab' && event.shiftKey) return '\x1b[Z';
     // Arrows with Shift, Alt or Ctrl: xterm's modifier codes.
     if (ARROWS[key] && (event.shiftKey || event.altKey || event.ctrlKey)) {

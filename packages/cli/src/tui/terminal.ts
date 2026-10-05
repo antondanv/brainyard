@@ -57,7 +57,10 @@ export async function runApp(options: { cwd?: string; sources?: Partial<Sources>
     const data = decoder.write(chunk);
     if (data) app?.dispatch({ kind: 'input', data });
   };
+  // While tmux has the terminal its screen is not ours to clear: the size is taken on the way back.
+  let inPane = false;
   const onResize = () => {
+    if (inPane) return;
     shown = [];
     output.write('\u001b[2J');
     app?.dispatch({ kind: 'resize', ...size() });
@@ -89,6 +92,7 @@ export async function runApp(options: { cwd?: string; sources?: Partial<Sources>
   };
 
   const attach = async (pane: string) => {
+    inPane = true;
     giveBack();
     // As open() does before a CLI takes the terminal: flush a fresh pause first.
     input.resume();
@@ -98,6 +102,8 @@ export async function runApp(options: { cwd?: string; sources?: Partial<Sources>
       await attachPane(pane, { hint: 'Ctrl+Q — back to Brainyard' });
     } finally {
       takeOver();
+      inPane = false;
+      onResize();
     }
   };
 

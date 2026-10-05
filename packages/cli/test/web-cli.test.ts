@@ -1,5 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { createInterface } from 'node:readline';
 
 import { listPanes, panesAvailable } from '@antondanv/brainyard';
@@ -9,6 +11,36 @@ import { cliEnv, machine, root, TEST_SOCKET } from './run-cli.js';
 
 // Real tmux, on a server of the test's own; the browser is this test, talking HTTP as the page does.
 const SOCKET = `${TEST_SOCKET}-web`;
+
+describe('brainyard web', () => {
+  it('ends with an error, not hanging, when its port is taken', async () => {
+    const taken = createServer();
+    await new Promise<void>((done) => taken.listen(0, '127.0.0.1', done));
+    const port = (taken.address() as AddressInfo).port;
+    try {
+      const child = spawn(
+        process.execPath,
+        ['--import', 'tsx', 'src/main.ts', 'web', '--port', String(port), '--no-open'],
+        {
+          cwd: root,
+          env: cliEnv({ ...machine(), BRAINYARD_TMUX_SOCKET: SOCKET }),
+          stdio: ['ignore', 'ignore', 'pipe'],
+        },
+      );
+      let errors = '';
+      child.stderr.on('data', (chunk: Buffer) => {
+        errors += chunk.toString('utf8');
+      });
+      const timer = setTimeout(() => child.kill('SIGKILL'), 15_000);
+      const [code] = await once(child, 'exit');
+      clearTimeout(timer);
+      expect(code).toBe(1);
+      expect(errors).toMatch(/EADDRINUSE|in use/);
+    } finally {
+      taken.close();
+    }
+  });
+});
 
 describe.skipIf(!panesAvailable())('brainyard web (real tmux)', () => {
   afterAll(() => {
@@ -78,9 +110,12 @@ describe.skipIf(!panesAvailable())('brainyard web (real tmux)', () => {
       };
 
       expect((await post('/api/app/resize', { width: 110, height: 32 })).status).toBe(200);
+      // The frame of the old size may still be on its way: the page's size comes next.
+      const sized = Date.now() + 10_000;
+      while (rows.length !== 32 && Date.now() < sized) await new Promise((done) => setTimeout(done, 50));
+      expect(rows).toHaveLength(32);
       await until(/╭─ Panes ─+ 0 panes ─╮/);
       await until(/╭─ Claude Code ─+ ready ─╮/);
-      expect(rows).toHaveLength(32);
 
       await post('/api/app/input', { data: 'n' });
       await until('New pane in');

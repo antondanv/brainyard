@@ -80,28 +80,39 @@ function loaded(state: State, source: Source, data: Partial<Omit<State['data'], 
     const before = waitingIds(state.data.live);
     if ([...waitingIds(data.live)].some((id) => !before.has(id))) effects.push({ kind: 'bell' });
   }
-  // The pane being typed into has gone.
-  if (data.panes && next.wall.typing && !data.panes.some((pane) => pane.pane === next.wall.focus)) {
+  // The pane being typed into has gone; a pane just started is not listed by a read begun before it.
+  const typed = next.wall.focus;
+  if (
+    data.panes &&
+    next.wall.typing &&
+    !data.panes.some((pane) => pane.pane === typed) &&
+    next.want !== `pane:${typed}`
+  ) {
     next = { ...next, wall: { ...next.wall, typing: false } };
   }
   return [next, effects];
 }
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: a bracketed paste is marked by escape sequences.
+const PASTE = /\u001b\[200~[\s\S]*?(?:\u001b\[201~|$)/g;
+
 /** What the terminal sent: bytes for the tile being typed into, the filter being edited, or keys. */
 function onInput(state: State, data: string): Step {
   if (!state.dialog && state.page === 'wall' && state.wall.typing) {
-    const here = focusedTile(wallTiles(state), state.wall.focus);
-    if (!here) return [{ ...state, wall: { ...state.wall, typing: false } }, []];
+    // The tile typed into by name: a pane just started is not on the wall until the next read.
+    const pane = state.wall.focus;
+    if (!pane) return [{ ...state, wall: { ...state.wall, typing: false } }, []];
     // Ctrl+Q belongs to the app; everything else, Ctrl+C included, to the CLI.
     const at = data.indexOf('\u0011');
     const typed = at < 0 ? data : data.slice(0, at);
-    const effects: Effect[] = typed ? [{ kind: 'send', pane: here.pane.pane, data: typed }] : [];
+    const effects: Effect[] = typed ? [{ kind: 'send', pane, data: typed }] : [];
     return [at < 0 ? state : { ...state, wall: { ...state.wall, typing: false } }, effects];
   }
   if (!state.dialog && state.page === 'sessions' && state.list.editing) return filterInput(state, data);
   let current = state;
   const effects: Effect[] = [];
-  for (const key of parseKeys(data)) {
+  // Pasted text where nothing takes text is not a string of shortcuts: "fix query" must not quit.
+  for (const key of parseKeys(data.replace(PASTE, ''))) {
     const [next, more] = update(current, { kind: 'key', key });
     current = next;
     effects.push(...more);

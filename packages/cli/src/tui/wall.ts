@@ -5,6 +5,7 @@
  * view draws the tiles, the runtime sizes each pane to its tile.
  */
 import type { PaneRow } from '../panes.js';
+import { split } from './parts.js';
 import type { Layout, State } from './state.js';
 
 export interface Tile {
@@ -31,12 +32,6 @@ export function capacity(width: number, height: number): number {
   const columns = Math.max(1, Math.floor(width / MIN_TILE.width));
   const rows = Math.max(1, Math.floor(height / MIN_TILE.height));
   return Math.min(9, columns * rows);
-}
-
-/** Splits `size` cells into `parts`, the first ones a cell larger when it does not divide. */
-function split(size: number, parts: number): number[] {
-  const base = Math.floor(size / parts);
-  return Array.from({ length: parts }, (_, index) => base + (index < size % parts ? 1 : 0));
 }
 
 /** Columns for a grid of `count` tiles: the one whose tiles look most like a terminal (about 3:1 in cells). */

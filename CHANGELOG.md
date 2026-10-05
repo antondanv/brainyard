@@ -31,7 +31,9 @@ All notable changes to this project are documented here. The format follows
   (CLI 1.1.11+), and OpenCode Go rolling, weekly and monthly quotas through its usage
   API. Both are metadata requests without inference, with timeouts and cancellation.
   `usage({ offline: true })` reads saved stores only. `LimitWindow` includes optional
-  `group` and `label` for Antigravity's model pools.
+  `group` and `label` for Antigravity's model pools. `usage({ limits: false })` reads the
+  sessions alone, every CLI's windows `not_requested`. A Claude Code cache of another account is
+  `limitsUnavailable: 'other_account'`.
 - The `brainyard` command covers the whole API: `panes` and `pane start|attach|show|send|close`
   for CLI sessions in tmux panes, `sessions --live` (`--all` adds finished background sessions)
   for what runs on the machine right now, `stop` for a Claude Code background session, and
@@ -77,6 +79,17 @@ All notable changes to this project are documented here. The format follows
   script); in a terminal it opens the app. `brainyard status` prints the table anywhere.
 - A pane taken full screen from the wall gets its tile's size back afterwards; it kept the
   terminal's size.
+- Keys typed into a tile just started from the wall go to it, not to the first tile, before a
+  read lists the new pane; a read begun earlier no longer stops the typing.
+- A paste where nothing takes text (the overview, a page) is left out instead of being read as
+  shortcuts: pasting "fix query" no longer quits. In the browser, AltGr and a Mac's Option type
+  their characters (`@` on a German keyboard), and one failed look at a pane does not end it.
+- `brainyard web` with its port taken ends with the error instead of hanging.
+- Resizing the terminal while a pane has it no longer clears tmux's screen; the app takes the
+  new size on the way back.
+- Claude Code's cache is read from `$CLAUDE_CONFIG_DIR/.claude.json` whenever that is set, and
+  `~/.claude.json` follows `HOME` from the options' `env`. The app reads the folder's usage
+  every minute without the windows, which it reads on their own.
 - One accent everywhere: the app's is bright blue — Brainyard's indigo in most terminals, and in
   the browser exactly the dashboard's — no longer cyan, which also means "working".
 - `brainyard serve` is no longer another name for `brainyard ui`: it opens no browser. Without

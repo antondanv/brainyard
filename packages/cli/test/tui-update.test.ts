@@ -215,6 +215,16 @@ describe('keys from a terminal', () => {
     expect(parseKeys('\u001b[<64;10;5M\u001b[<0;3;4m')).toEqual([]);
     expect(parseKeys('漢🔥')).toEqual(['漢', '🔥']);
   });
+
+  it('leaves a paste out where nothing takes text, and gives it to the filter where it does', () => {
+    // "fix query" pasted on the overview is not x, then q.
+    expect(update(world(), { kind: 'input', data: '\u001b[200~fix query\u001b[201~' })).toEqual([world(), []]);
+    const [, after] = update(world(), { kind: 'input', data: '\u001b[200~xq\u001b[201~?' });
+    expect(after).toEqual([]);
+    expect(update(world(), { kind: 'input', data: '\u001b[200~xq\u001b[201~?' })[0].dialog).toEqual({ kind: 'help' });
+    const editing = world({ page: 'sessions', list: { ...world().list, editing: true } });
+    expect(update(editing, { kind: 'input', data: '\u001b[200~crdt\u001b[201~' })[0].list.filter).toBe('crdt');
+  });
 });
 
 describe('text in cells', () => {

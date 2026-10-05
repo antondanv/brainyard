@@ -388,6 +388,23 @@ describe('brainyard web: the screen', () => {
     page.close();
   });
 
+  it('stays in the pane through a look that fails once', async () => {
+    const page = watch();
+    await page.opened;
+    await page.until('auth refactor');
+    await post('/api/app/input', { data: '\r' });
+    await page.until('claude-1a2b3c4d ready');
+    // tmux busy for a moment: one look finds nothing, the next ones find the screen again.
+    gone.add('claude-1a2b3c4d');
+    await new Promise((done) => setTimeout(done, 25));
+    gone.delete('claude-1a2b3c4d');
+    await new Promise((done) => setTimeout(done, 100));
+    expect(web.pane()).toBe('claude-1a2b3c4d');
+    await post('/api/app/input', { data: 'still' });
+    await page.until('> still');
+    page.close();
+  });
+
   it('leaves the pane when its CLI ends, or by a click on the bar', async () => {
     const page = watch();
     await page.opened;

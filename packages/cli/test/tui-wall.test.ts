@@ -210,6 +210,18 @@ describe('keys on the wall', () => {
     expect(focused.wall).toMatchObject({ focus: 'claude-1a2b3c4d', typing: true });
   });
 
+  it('types into a tile just started, before a read lists it, and not into the first tile', () => {
+    // The runtime selects the new pane (it is wanted until listed), then focuses it for typing.
+    const [wanted] = update(state, { kind: 'select', key: 'pane:claude-00000009' });
+    const [typing] = update(wanted, { kind: 'focus', pane: 'claude-00000009', typing: true });
+    expect(update(typing, { kind: 'input', data: 'rm -rf build\r' })[1]).toEqual([
+      { kind: 'send', pane: 'claude-00000009', data: 'rm -rf build\r' },
+    ]);
+    // A read begun before the pane started does not list it: the typing goes on.
+    const [stale] = update(typing, { kind: 'loaded', source: 'panes', data: { panes: PANES } });
+    expect(stale.wall).toMatchObject({ typing: true, focus: 'claude-00000009' });
+  });
+
   it('stops typing when the pane goes away', () => {
     const [typing] = press(state, 'i');
     const [gone] = update(typing, { kind: 'loaded', source: 'panes', data: { panes: [PANES[0]!] } });

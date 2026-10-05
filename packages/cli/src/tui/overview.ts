@@ -15,6 +15,7 @@ import {
 } from '@antondanv/brainyard';
 
 import { bytes, money, tokens } from '../format.js';
+import { AVAILABILITY } from '../status.js';
 import type { Paint } from '../term.js';
 import { ago, count, type Translate, windowLabel } from './i18n.js';
 import {
@@ -49,15 +50,6 @@ export interface Layout {
 
 /** A card's rows: its border, the sign-in, two limits, its border. */
 const CARD = 5;
-
-const AVAILABILITY: Record<BrainStatus['availability'], [word: string, colour: 'green' | 'yellow' | 'gray' | 'red']> = {
-  ready: ['ready', 'green'],
-  needs_login: ['sign in', 'yellow'],
-  limited: ['limited', 'yellow'],
-  unknown: ['unknown', 'yellow'],
-  not_installed: ['not installed', 'gray'],
-  error: ['error', 'red'],
-};
 
 /** The words for each state of a CLI, for the tests that check every text has its translation. */
 export const STATUS_WORDS = Object.values(AVAILABILITY).map(([word]) => word);

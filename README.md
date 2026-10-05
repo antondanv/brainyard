@@ -391,12 +391,13 @@ belong to the active CLI login. OpenCode Go uses `OPENCODE_GO_API_KEY` or
 project or inline OpenCode config can override the stored key; `{env:NAME}` is
 supported. A missing key or Go subscription returns an explanation. `offline: true`
 skips both metadata requests and reads saved stores only; it cannot be combined with
-`live: true`.
+`live: true`. `limits: false` reads the sessions alone and every CLI's windows come back
+`not_requested`: for a program that reads the windows on a schedule of its own.
 
 Claude Code keeps the windows it fetched last (when its `/usage` shows them) in its
-global file, `~/.claude.json`, or `.claude.json` inside `CLAUDE_CONFIG_DIR`: `usage()`
-reads them there for free, with the time they were fetched, and leaves a cache of
-another account out. A window whose reset time has passed since then says nothing
+global file, `~/.claude.json`, or `.claude.json` inside `CLAUDE_CONFIG_DIR` when that is
+set: `usage()` reads them there for free, with the time they were fetched, and leaves a
+cache of another account out (`limitsUnavailable: 'other_account'`). A window whose reset time has passed since then says nothing
 about now.
 
 `live: true` makes one isolated, minimal Claude call with a 30-second timeout by

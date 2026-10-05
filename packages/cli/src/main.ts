@@ -543,6 +543,10 @@ async function serverCommand(args: string[], mode: 'web' | 'ui' | 'serve'): Prom
     ...(values.host ? { host: values.host } : {}),
     ...(token ? { token } : {}),
     ...(app ? { app } : {}),
+  }).catch((error: unknown) => {
+    // The app reads on timers: a port taken must not leave the command running with no server.
+    app?.stop();
+    throw error;
   });
   // One line a parent process reads to know where to call.
   if (values.json) {

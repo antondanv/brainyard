@@ -62,11 +62,15 @@ const RESET = '\u001b[0m';
 const CTRL_Q = '\u0011';
 /** Rows of history one turn of the wheel scrolls in a pane. */
 const WHEEL = 3;
+/** Looks in a row without a screen before the pane counts as gone. */
+const MISSES = 3;
 
 interface OnScreen {
   name: string;
   /** Rows up into the history; 0 is the live screen. */
   scroll: number;
+  /** Looks in a row that found no screen. */
+  misses: number;
   screen?: PaneScreen;
   /** The app's state when the pane was entered: its language, its theme, what the pane is. */
   state: State;
@@ -124,8 +128,14 @@ export function startWeb(options: WebOptions = {}): WebScreen {
     try {
       const screen = await sources.capture(here.name, here.scroll || undefined).catch(() => undefined);
       if (pane !== here) return;
-      // The CLI ended, or the pane was closed from elsewhere: back to the app.
-      if (!screen) return here.leave();
+      // The CLI ended, or the pane was closed from elsewhere: back to the app. One look that failed
+      // (tmux busy for a moment) is not that: the person may be in the middle of a sentence.
+      if (!screen) {
+        here.misses += 1;
+        if (here.misses >= MISSES) here.leave();
+        return;
+      }
+      here.misses = 0;
       here.screen = screen;
       draw(paneLines(here, screen, size.width, size.height));
     } finally {
@@ -140,6 +150,7 @@ export function startWeb(options: WebOptions = {}): WebScreen {
       pane = {
         name,
         scroll: 0,
+        misses: 0,
         state,
         leave: () => {
           clearInterval(timer);
