@@ -142,7 +142,11 @@ export type Event =
   | { kind: 'busy'; text?: string }
   | { kind: 'note'; note?: Note }
   /** Select an item by its key: the pane the app has just started. */
-  | { kind: 'select'; key: string };
+  | { kind: 'select'; key: string }
+  /** A click, a double click or a turn of the wheel at a cell of the frame: what a browser sends. */
+  | { kind: 'mouse'; action: MouseAction; x: number; y: number };
+
+export type MouseAction = 'click' | 'double' | 'wheel-up' | 'wheel-down';
 
 export function initialState(options: {
   cwd: string;

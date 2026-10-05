@@ -14,7 +14,7 @@ import {
 } from '@antondanv/brainyard';
 
 import { bytes, money, tokens } from '../format.js';
-import { type Paint, table } from '../term.js';
+import { type Paint, palette, table } from '../term.js';
 import { ago, count, LANGUAGE_NAMES, LANGUAGES, type Translate, until, windowLabel } from './i18n.js';
 import { bar, itemRow, limitBar, resetSince } from './overview.js';
 import {
@@ -28,6 +28,7 @@ import {
   LABEL_WIDTH,
   liveById,
   pad,
+  type Span,
   split,
   titleOf,
   whyNoLimits,
@@ -44,6 +45,8 @@ export interface Row {
 }
 
 const RESET = '\u001b[0m';
+/** No colours: where things are, not how they look. */
+const PLAIN = palette(false);
 
 // ---------------------------------------------------------------------------
 // the wall
@@ -198,12 +201,19 @@ export function listRoom(height: number): number {
   return Math.max(1, height - 2);
 }
 
+/** The widths of the sessions page's list and of the card beside it: none below 100 cells. */
+export function sessionsWidths(width: number): [list: number, card: number] {
+  if (width < 100) return [width, 0];
+  const [list = 0, card = 0] = split(width, 2);
+  return [list + 8, card - 8];
+}
+
 /** The sessions page: a filtered list in a box, and the selected one's card beside it. */
 export function sessionsRows(state: State, c: Paint, width: number, height: number): Row[] {
   const t = tr(state);
   const list = listItems(state);
   const { item: selected } = listFocus(state, list);
-  const [left, right] = width >= 100 ? split(width, 2).map((half, index) => half + (index === 0 ? 8 : -8)) : [width, 0];
+  const [left, right] = sessionsWidths(width);
   const room = listRoom(height);
   const scroll = listScroll(state, room);
   const { filter, editing } = state.list;
@@ -213,12 +223,12 @@ export function sessionsRows(state: State, c: Paint, width: number, height: numb
       : c.dim(`  / ${t('filter')}`);
   const lines = list
     .slice(scroll, scroll + room)
-    .map((item) => itemRow(item, state, c, left! - 4, item.key === selected?.key, true));
+    .map((item) => itemRow(item, state, c, left - 4, item.key === selected?.key, true));
   if (list.length === 0) {
     lines.push(`  ${c.dim(filter ? t('nothing fits the filter · Esc clears it') : t('no sessions yet'))}`);
   }
   while (lines.length < room) lines.push('');
-  const listBox = box(left!, lines, {
+  const listBox = box(left, lines, {
     title: `${c.accent(c.bold(t('Sessions')))}${search}`,
     note: c.dim(String(list.length)),
     tint: c.gray,
@@ -378,31 +388,70 @@ function valueName(name: SettingName, value: string, t: Translate): string {
   return t(value);
 }
 
-/** All the values with the chosen one marked; where they do not fit, the chosen one between arrows. */
-function valuesText(name: SettingName, chosen: string, width: number, c: Paint, t: Translate): string {
+/**
+ * All the values with the chosen one marked, and where each is in the text; where they do not fit, the
+ * chosen one between arrows, which stand for the values before and after it.
+ */
+function valuesText(
+  name: SettingName,
+  chosen: string,
+  width: number,
+  c: Paint,
+  t: Translate,
+): { text: string; spans: Span<string>[] } {
   const values = settingValues(name);
-  const all = values
-    .map((value) => {
-      const shown = valueName(name, value, t);
-      return value === chosen ? c.accent(c.bold(`[${shown}]`)) : ` ${shown} `;
-    })
-    .join(' ');
-  if (cells(all) <= width) return all;
+  let text = '';
+  const spans: Span<string>[] = [];
+  for (const [index, value] of values.entries()) {
+    if (index > 0) text += ' ';
+    const shown = valueName(name, value, t);
+    const from = cells(text);
+    text += value === chosen ? c.accent(c.bold(`[${shown}]`)) : ` ${shown} `;
+    spans.push({ value, from, to: cells(text) });
+  }
+  if (cells(text) <= width) return { text, spans };
   const at = values.indexOf(chosen);
-  return `${c.dim('◂')} ${c.accent(c.bold(`[${valueName(name, chosen, t)}]`))} ${c.dim('▸')}  ${c.dim(`${at + 1}/${values.length}`)}`;
+  const before = values[(at - 1 + values.length) % values.length]!;
+  const after = values[(at + 1) % values.length]!;
+  const marked = `[${valueName(name, chosen, t)}]`;
+  return {
+    text: `${c.dim('◂')} ${c.accent(c.bold(marked))} ${c.dim('▸')}  ${c.dim(`${at + 1}/${values.length}`)}`,
+    spans: [
+      { value: before, from: 0, to: 1 },
+      { value: chosen, from: 2, to: 2 + cells(marked) },
+      { value: after, from: 3 + cells(marked), to: 4 + cells(marked) },
+    ],
+  };
+}
+
+/** A setting's row: the mark, its name, its values; and where the values start on it. */
+function settingLine(state: State, index: number, c: Paint, t: Translate): { text: string; spans: Span<string>[] } {
+  const name = SETTINGS[index]!;
+  const mark = index === state.setting;
+  const label = pad(t(SETTING_LABELS[name]), 30);
+  const values = valuesText(name, settingValue(state.settings, name), state.width - 4 - 2 - 30, c, t);
+  const text = `${mark ? c.accent('▌') : ' '} ${mark ? c.bold(label) : label}`;
+  // Inside the box, the row starts two cells in.
+  const from = 2 + cells(text);
+  return {
+    text: `${text}${values.text}`,
+    spans: values.spans.map((span) => ({ ...span, from: span.from + from, to: span.to + from })),
+  };
+}
+
+/** The setting on this body row of the settings page, and the value at this cell of it, if any. */
+export function settingAt(state: State, x: number, y: number): { index: number; value?: string } | undefined {
+  const index = y - 1;
+  if (index < 0 || index >= SETTINGS.length) return undefined;
+  const value = settingLine(state, index, PLAIN, tr(state)).spans.find((span) => x >= span.from && x < span.to);
+  return value ? { index, value: value.value } : { index };
 }
 
 /** The settings page: each setting with all its values, the chosen one marked; then a preview. */
 export function settingsRows(state: State, c: Paint): Row[] {
   const t = tr(state);
   const width = state.width;
-  const lines = SETTINGS.map((name, index) => {
-    const chosen = settingValue(state.settings, name);
-    const mark = index === state.setting;
-    const label = pad(t(SETTING_LABELS[name]), 30);
-    const values = valuesText(name, chosen, width - 4 - 2 - 30, c, t);
-    return `${mark ? c.accent('▌') : ' '} ${mark ? c.bold(label) : label}${values}`;
-  });
+  const lines = SETTINGS.map((_, index) => settingLine(state, index, c, t).text);
   const rows: Row[] = [];
   const kept = t('kept in {file}', { file: state.settingsFile ?? '~/.config/brainyard/app.json' });
   for (const text of box(width, lines, { title: c.accent(c.bold(t('Settings'))), note: c.dim(kept), tint: c.gray })) {

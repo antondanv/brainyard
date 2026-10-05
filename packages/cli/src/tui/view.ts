@@ -14,7 +14,7 @@ import { type Paint, palette } from '../term.js';
 import { count, type Translate } from './i18n.js';
 import { type Layout, overviewLayout } from './overview.js';
 import { type Row, sessionsRows, settingsRows, usageRows, wallPages, wallRows } from './pages.js';
-import { folderName, pad } from './parts.js';
+import { folderName, pad, type Span } from './parts.js';
 import { PAGE_NAMES, PAGES, type Page } from './settings.js';
 import { focus, listFocus, type State, stoppable, tr, waitingIds } from './state.js';
 import { cells, clean, fit } from './text.js';
@@ -86,17 +86,35 @@ export function render(state: State, c: Paint): string[] {
 // ---------------------------------------------------------------------------
 const TABS = PAGE_NAMES;
 
-/** The name, the pages as tabs (digits open them), and on the right who waits and what the panes cost. */
-function headerText(state: State, c: Paint, t: Translate): string {
+/** The name and the pages as tabs, and where each tab is; a narrow screen names only the open page. */
+function headerLeft(state: State, c: Paint, t: Translate): { text: string; tabs: Span<Page>[] } {
   const tab = (page: Page, index: number, short: boolean) => {
     const name = short && page !== state.page ? `${index + 1}` : `${index + 1} ${t(TABS[page])}`;
     return page === state.page ? c.accent(c.bold(`[${name}]`)) : c.dim(` ${name} `);
   };
-  // A narrow screen names only the open page; the others keep their digits.
-  let left = `${c.bold('Brainyard')} ${c.dim(state.version)}  ${PAGES.map((page, index) => tab(page, index, false)).join(' ')}`;
-  if (cells(left) > state.width - 2) {
-    left = `${c.bold('Brainyard')}  ${PAGES.map((page, index) => tab(page, index, true)).join('')}`;
-  }
+  const build = (short: boolean) => {
+    let text = short ? `${c.bold('Brainyard')}  ` : `${c.bold('Brainyard')} ${c.dim(state.version)}  `;
+    const tabs: Span<Page>[] = [];
+    for (const [index, page] of PAGES.entries()) {
+      if (index > 0 && !short) text += ' ';
+      const from = cells(text);
+      text += tab(page, index, short);
+      tabs.push({ value: page, from, to: cells(text) });
+    }
+    return { text, tabs };
+  };
+  const full = build(false);
+  return cells(full.text) > state.width - 2 ? build(true) : full;
+}
+
+/** The tab at this cell of the header: what a click opens. */
+export function tabAt(state: State, x: number): Page | undefined {
+  return headerLeft(state, PLAIN, tr(state)).tabs.find((span) => x >= span.from && x < span.to)?.value;
+}
+
+/** The name, the pages as tabs (digits open them), and on the right who waits and what the panes cost. */
+function headerText(state: State, c: Paint, t: Translate): string {
+  const left = headerLeft(state, c, t).text;
   const waiting = waitingIds(state.data.live).size;
   const panes = state.data.panes ?? [];
   const memory = panes.reduce((sum, pane) => sum + (pane.memory ?? 0), 0);
@@ -122,21 +140,35 @@ function headerText(state: State, c: Paint, t: Translate): string {
 // ---------------------------------------------------------------------------
 function statusText(state: State, c: Paint, t: Translate): string {
   const { dialog } = state;
-  if (dialog?.kind === 'new') {
-    const choices = newChoices(state)
-      .map((brain) => {
-        const label = BRAINS[brain].label;
-        return brain === dialog.brain ? c.accent(c.bold(`[${label}]`)) : ` ${label} `;
-      })
-      .join(' ');
-    return `${c.bold(t('New pane'))} ${t('in {folder}', { folder: folderName(state) })}:  ${choices}`;
-  }
+  if (dialog?.kind === 'new') return newLine(state, dialog.brain, c, t).text;
   if (dialog?.kind === 'confirm') return c.yellow(dialog.question);
   if (state.busy) return c.cyan(state.busy);
   const note = state.note;
   if (!note) return '';
   const text = clean(note.text);
   return note.tone === 'error' ? c.red(text) : note.tone === 'ok' ? c.green(text) : text;
+}
+
+/** The question of the new pane dialog with the CLIs to choose from, and where each is on its row. */
+function newLine(state: State, chosen: BrainId, c: Paint, t: Translate): { text: string; choices: Span<BrainId>[] } {
+  let text = `${c.bold(t('New pane'))} ${t('in {folder}', { folder: folderName(state) })}:  `;
+  const choices: Span<BrainId>[] = [];
+  for (const [index, brain] of newChoices(state).entries()) {
+    if (index > 0) text += ' ';
+    const label = BRAINS[brain].label;
+    // The row starts one cell in.
+    const from = cells(text) + 1;
+    text += brain === chosen ? c.accent(c.bold(`[${label}]`)) : ` ${label} `;
+    choices.push({ value: brain, from, to: cells(text) + 1 });
+  }
+  return { text, choices };
+}
+
+/** The CLI at this cell of the new pane dialog's row: what a click starts. */
+export function choiceAt(state: State, x: number): BrainId | undefined {
+  if (state.dialog?.kind !== 'new') return undefined;
+  const { choices } = newLine(state, state.dialog.brain, PLAIN, tr(state));
+  return choices.find((span) => x >= span.from && x < span.to)?.value;
 }
 
 /** The CLIs a new pane can run: all but the ones known not to be installed. */
@@ -266,6 +298,7 @@ export const HELP: [keys: string, what: string][] = [
   ['Sessions', '/ filters; Enter or r continues, s stops, x closes its pane'],
   ['Settings', '↑↓ choose, ←→ change: language, theme, accent, layout, bell, first page'],
   ['', ''],
+  ['Click  wheel', 'in a browser: a click selects, a double click is Enter, the wheel moves'],
   ['Ctrl+L', 'read everything again'],
   ['q  Ctrl+C', 'quit: the panes keep running'],
 ];
@@ -274,8 +307,8 @@ function helpRows(state: State, c: Paint): Row[] {
   const t = tr(state);
   const rows: Row[] = [{ text: '' }, { text: c.accent(c.bold(t('Keys'))) }];
   for (const [keys, what] of HELP) {
-    // A page's name heads its keys; keys themselves stay as they are.
-    const name = (Object.values(PAGE_NAMES) as string[]).includes(keys) ? t(keys) : keys;
+    // A page's name heads its keys; keys stay as they are, but for the mouse's words.
+    const name = t(keys);
     rows.push({ text: what ? `  ${pad(c.accent(name), 16)} ${t(what)}` : keys ? `  ${c.bold(name)}` : '' });
   }
   rows.push(

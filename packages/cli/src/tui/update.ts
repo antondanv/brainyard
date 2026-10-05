@@ -6,6 +6,7 @@
 import { BRAINS, type BrainId, type SessionInfo } from '@antondanv/brainyard';
 
 import { parseKeys } from './keys.js';
+import { targetAt } from './mouse.js';
 import { listScroll, SETTINGS, type SettingName, settingValue, settingValues } from './pages.js';
 import { LAYOUTS, type Layout, PAGES, type Page, type Settings } from './settings.js';
 import {
@@ -17,6 +18,7 @@ import {
   items,
   listFocus,
   listItems,
+  type MouseAction,
   type Note,
   type Source,
   type State,
@@ -64,6 +66,8 @@ export function update(state: State, event: Event): Step {
         { ...state, page: 'wall', wall: { ...state.wall, focus: event.pane, typing: event.typing === true } },
         [],
       ];
+    case 'mouse':
+      return onMouse(state, event.action, event.x, event.y);
   }
 }
 
@@ -103,6 +107,58 @@ function onInput(state: State, data: string): Step {
     effects.push(...more);
   }
   return [current, effects];
+}
+
+/**
+ * A click does what the keys would at what it lands on: it opens a tab, selects an item, focuses a tile,
+ * picks a setting or its value; a double click is Enter on it. The wheel moves the selection, as ↑ and ↓.
+ */
+function onMouse(state: State, action: MouseAction, x: number, y: number): Step {
+  if (action === 'wheel-up' || action === 'wheel-down') {
+    const typing = (state.page === 'wall' && state.wall.typing) || (state.page === 'sessions' && state.list.editing);
+    if (state.dialog || typing || state.page === 'wall') return [state, []];
+    return onKey(state, action === 'wheel-up' ? 'up' : 'down');
+  }
+  const target = targetAt(state, x, y);
+  if (state.dialog) {
+    // A click on a CLI starts it; anywhere else it is Esc: a question is answered no.
+    if (target?.kind === 'choice') return [closeDialog(state), [startNew(state, target.brain)]];
+    return [closeDialog(state), []];
+  }
+  if (!target) return [state, []];
+  const s = withOut({ ...state, note: undefined }, 'note');
+  const then = (next: State): Step => (action === 'double' ? onKey(next, 'enter') : [next, []]);
+  switch (target.kind) {
+    case 'tab':
+      return [toPage(s, target.page), []];
+    case 'item': {
+      const list = items(s);
+      return then(
+        select(
+          s,
+          list,
+          list.findIndex((item) => item.key === target.key),
+        ),
+      );
+    }
+    case 'listed':
+      return then(pickListed({ ...s, list: { ...s.list, editing: false } }, listItems(s), target.index));
+    case 'filter':
+      return [{ ...s, list: { ...s.list, editing: true } }, []];
+    case 'tile': {
+      // Typing goes on in the tile clicked; another tile takes the focus, and the keys are the app's again.
+      if (state.wall.typing && state.wall.focus === target.pane) return [state, []];
+      return then({ ...s, wall: { ...s.wall, focus: target.pane, typing: false } });
+    }
+    case 'setting': {
+      const picked = { ...s, setting: target.index };
+      const name = SETTINGS[target.index]!;
+      if (target.value !== undefined) return setTo(picked, name, target.value);
+      return action === 'double' ? onKey(picked, 'right') : [picked, []];
+    }
+    case 'choice':
+      return [state, []];
+  }
 }
 
 /** Optional fields go away rather than stay as undefined: states compare and print cleanly. */
@@ -404,6 +460,14 @@ function withSetting(settings: Settings, name: SettingName, value: string): Sett
   }
 }
 
+/** A setting changed, and kept at once. */
+function setTo(state: State, name: SettingName, value: string): Step {
+  if (settingValue(state.settings, name) === value) return [state, []];
+  const settings = withSetting(state.settings, name, value);
+  const wall = name === 'layout' ? { ...state.wall, layout: settings.layout } : state.wall;
+  return [{ ...state, settings, wall }, [{ kind: 'save', settings }]];
+}
+
 function settingsKey(state: State, s: State, key: string): Step {
   const at = Math.min(Math.max(0, state.setting), SETTINGS.length - 1);
   switch (key) {
@@ -423,9 +487,7 @@ function settingsKey(state: State, s: State, key: string): Step {
       const values = settingValues(name);
       const step = key === 'left' || key === 'h' ? -1 : 1;
       const index = values.indexOf(settingValue(state.settings, name));
-      const settings = withSetting(state.settings, name, values[(index + step + values.length) % values.length]!);
-      const wall = name === 'layout' ? { ...s.wall, layout: settings.layout } : s.wall;
-      return [{ ...s, settings, wall }, [{ kind: 'save', settings }]];
+      return setTo(s, name, values[(index + step + values.length) % values.length]!);
     }
     case 'n':
       return openNew(s, undefined);

@@ -97,6 +97,8 @@ export const RU: Record<string, string> = {
   // The wall
   'i type · Enter full screen': 'i печатать · Enter на весь экран',
   '✎ typing · Ctrl+Q back': '✎ ввод · Ctrl+Q назад',
+  'Ctrl+Q — back to Brainyard': 'Ctrl+Q — назад в Brainyard',
+  '↑ {rows} rows back · the wheel down returns': '↑ на {rows} строк назад · колесо вниз — обратно',
   'screen {page}/{pages}': 'экран {page}/{pages}',
   'in focus': 'в фокусе',
   typing: 'ввод',
@@ -152,6 +154,9 @@ export const RU: Record<string, string> = {
   '↑↓ choose, ←→ change: language, theme, accent, layout, bell, first page':
     '↑↓ выбор, ←→ изменить: язык, тема, акцент, раскладка, звонок, первая страница',
   'read everything again': 'перечитать всё',
+  'Click  wheel': 'Щелчок  колесо',
+  'in a browser: a click selects, a double click is Enter, the wheel moves':
+    'в браузере: щелчок выбирает, двойной щелчок — Enter, колесо двигает',
   'quit: the panes keep running': 'выход: панели продолжают работать',
   'Panes are CLI sessions in tmux (tmux -L brainyard): they outlive this app and this terminal.':
     'Панели — это сессии CLI в tmux (tmux -L brainyard): они переживают и приложение, и терминал.',

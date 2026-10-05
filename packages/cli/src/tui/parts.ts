@@ -35,6 +35,13 @@ export function cached(usage: Usage): number {
   return usage.cacheReadTokens + usage.cacheWriteTokens;
 }
 
+/** What a stretch of a row stands for, and the cells it takes: from, up to but not including `to`. */
+export interface Span<T> {
+  value: T;
+  from: number;
+  to: number;
+}
+
 /** A box's top or bottom: corners, a title on the left, a note on the right; exactly `width` cells. */
 export function border(
   width: number,

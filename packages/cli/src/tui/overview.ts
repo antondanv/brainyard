@@ -40,8 +40,11 @@ export interface Row {
 
 export interface Layout {
   rows: Row[];
-  /** Body rows of each item: the first one to show (its box's top, for a box's first item) and the last. */
-  spans: Map<string, { top: number; last: number }>;
+  /**
+   * Body rows of each item: the first one to show (its box's top, for a box's first item) and the last;
+   * cards side by side also have their cells, from `left` up to but not including `right`.
+   */
+  spans: Map<string, { top: number; last: number; left?: number; right?: number }>;
 }
 
 /** A card's rows: its border, the sign-in, two limits, its border. */
@@ -280,7 +283,7 @@ function emptyText(id: SectionId, state: State, t: Translate): string {
 export function overviewLayout(state: State, c: Paint): Layout {
   const t = tr(state);
   const rows: Row[] = [];
-  const spans = new Map<string, { top: number; last: number }>();
+  const spans: Layout['spans'] = new Map();
   const selected = focus(state).item?.key;
   const all = sections(state);
   const agents = all.find((section) => section.id === 'agents')?.items ?? [];
@@ -294,7 +297,12 @@ export function overviewLayout(state: State, c: Paint): Layout {
     );
     const top = rows.length;
     for (let line = 0; line < CARD; line++) rows.push({ text: cards.map((card) => card[line] ?? '').join('') });
-    for (const item of chunk) spans.set(item.key, { top, last: rows.length - 1 });
+    let left = 0;
+    for (const [index, item] of chunk.entries()) {
+      const right = left + widths[index]!;
+      spans.set(item.key, { top, last: rows.length - 1, left, right });
+      left = right;
+    }
   }
   for (const section of all) {
     if (section.id === 'agents') continue;
