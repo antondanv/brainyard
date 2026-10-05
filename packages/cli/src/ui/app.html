@@ -61,11 +61,12 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); }
 #screen {
-  position: absolute; inset: 0; padding: 10px 12px; outline: none;
+  position: absolute; inset: 0; padding: 10px 12px; outline: none; --cw: 8.43px;
   font: 14px/1.17 var(--mono); font-variant-ligatures: none; font-kerning: none;
   white-space: pre; cursor: default; -webkit-font-smoothing: antialiased;
 }
-#screen > div { height: var(--row, 16.4px); overflow: hidden; }
+#screen > div { position: relative; height: var(--row, 16.4px); overflow: hidden; }
+#screen > div > span { position: absolute; top: 0; bottom: 0; white-space: pre; }
 #screen ::selection { background: color-mix(in srgb, var(--c4) 40%, transparent); }
 .b { font-weight: 700; }
 .d { opacity: .62; }
@@ -74,7 +75,6 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 .s { text-decoration: line-through; }
 .u.s { text-decoration: underline line-through; }
 .h { visibility: hidden; }
-.w { display: inline-block; white-space: pre; }
 #probe { position: absolute; visibility: hidden; white-space: pre; font: 14px/1.17 var(--mono); font-variant-ligatures: none; }
 #veil { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--veil); font: 14px/1.6 var(--mono); padding: 24px; text-align: center; }
 #veil code { color: var(--c6); }
@@ -181,10 +181,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   // biome-ignore lint/suspicious/noControlCharactersInRegex: SGR codes are what a frame is made of.
   const CODE = /\u001b\[([0-9;:]*)m/g;
 
-  // Letters every monospace font has keep their place. Anything else — lines, symbols, CJK, emoji — may
-  // come from another font with another width: a run of them is held to the cells a terminal gives it,
-  // or the rest of the row would drift.
+  // A terminal puts every character in its cell; a browser lays text out by each glyph's own width,
+  // and a glyph from another font (lines, symbols, CJK, emoji) has another. So each run of text is set
+  // at its column and given exactly its cells: rows cannot drift, borders and backgrounds line up.
+  // Letters every monospace font has go in runs; anything else goes a character at a time, but for
+  // box drawing and blocks, which the fonts here have.
   const NARROW = /^[\u0020-\u007e\u00a0-\u024f\u0370-\u03ff\u0400-\u04ff]$/;
+  const LINES = /^[\u2500-\u259f]$/;
   const WIDE = [
     [0x1100, 0x115f], [0x2e80, 0x303e], [0x3041, 0x33ff], [0x3400, 0x4dbf], [0x4e00, 0x9fff], [0xa000, 0xa4cf],
     [0xac00, 0xd7a3], [0xf900, 0xfaff], [0xfe30, 0xfe4f], [0xff00, 0xff60], [0xffe0, 0xffe6], [0x1f300, 0x1f64f],
@@ -197,58 +200,54 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
     if (grapheme.includes('\ufe0f') && /\p{Extended_Pictographic}/u.test(grapheme)) return 2;
     return WIDE.some(([from, to]) => code >= from && code <= to) ? 2 : 1;
   }
-  function pieces(text) {
-    if (/^[\u0020-\u007e]*$/.test(text)) return [document.createTextNode(text)];
-    const out = [];
-    let plain = '';
-    let held = '';
-    let cells = 0;
-    const flush = () => {
-      if (plain) out.push(document.createTextNode(plain));
-      if (held) {
-        const span = document.createElement('span');
-        span.className = 'w';
-        span.style.width = `${cells}ch`;
-        span.textContent = held;
-        out.push(span);
-      }
-      plain = '';
-      held = '';
-      cells = 0;
-    };
-    for (const { segment } of graphemes.segment(text)) {
-      if (NARROW.test(segment)) {
-        if (held) flush();
-        plain += segment;
-      } else {
-        if (plain) { out.push(document.createTextNode(plain)); plain = ''; }
-        held += segment;
-        cells += cellsOf(segment);
-      }
-    }
-    flush();
-    return out;
-  }
 
-  /** A frame's row as spans: the text stays text, nothing in it is read as HTML. */
+  /** A frame's row as spans, each at its column and its cells wide; the text stays text, never HTML. */
   function row(line) {
     const out = [];
     const style = {};
     let last = 0;
-    const push = (text) => {
-      if (!text) return;
-      const keys = Object.keys(style);
-      if (keys.length === 0) { out.push(...pieces(text)); return; }
+    let column = 0;
+    const place = (text, cells) => {
       const span = document.createElement('span');
-      span.append(...pieces(text));
+      span.textContent = text;
       const flags = ['b', 'd', 'i', 'u', 's', 'h'].filter((flag) => style[flag]);
       if (flags.length) span.className = flags.join(' ');
       let fg = style.fg;
       let bg = style.bg;
-      if (style.v) { [fg, bg] = [bg || 'var(--bg)', fg || 'var(--fg)']; }
+      if (style.v) [fg, bg] = [bg || 'var(--bg)', fg || 'var(--fg)'];
       if (fg) span.style.color = fg;
       if (bg) span.style.backgroundColor = bg;
+      span.style.left = `calc(var(--cw) * ${column})`;
+      span.style.width = `calc(var(--cw) * ${cells})`;
       out.push(span);
+      column += cells;
+    };
+    const push = (text) => {
+      if (!text) return;
+      if (/^[\u0020-\u007e]*$/.test(text)) return place(text, text.length);
+      let run = '';
+      let cells = 0;
+      let lines = false;
+      const flush = () => {
+        if (run) place(run, cells);
+        run = '';
+        cells = 0;
+      };
+      for (const { segment } of graphemes.segment(text)) {
+        const narrow = NARROW.test(segment);
+        const line = LINES.test(segment);
+        if (narrow || line) {
+          // Letters with letters, lines with lines.
+          if (run && line !== lines) flush();
+          lines = line;
+          run += segment;
+          cells += 1;
+        } else {
+          flush();
+          place(segment, cellsOf(segment));
+        }
+      }
+      flush();
     };
     CODE.lastIndex = 0;
     for (let match = CODE.exec(line); match; match = CODE.exec(line)) {
@@ -368,6 +367,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
     if (box.width > 0) cell.width = box.width / probe.textContent.length;
     if (box.height > 0) cell.height = box.height;
     screen.style.setProperty('--row', `${cell.height}px`);
+    screen.style.setProperty('--cw', `${cell.width}px`);
     const style = getComputedStyle(screen);
     const inner = {
       width: screen.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
