@@ -118,8 +118,13 @@ export async function serve(options: ServeOptions = {}): Promise<Dashboard> {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
 
-    if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-      const { html, scriptHash } = page(VERSION, options.app ? 'app' : 'dashboard');
+    // With the app, the dashboard and its playground are a page further: one server, one token.
+    const dashboard = options.app
+      ? url.pathname === '/dashboard'
+      : url.pathname === '/' || url.pathname === '/index.html';
+    const app = options.app !== undefined && (url.pathname === '/' || url.pathname === '/index.html');
+    if (req.method === 'GET' && (app || dashboard)) {
+      const { html, scriptHash } = page(VERSION, app ? 'app' : 'dashboard');
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',

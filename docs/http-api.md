@@ -80,7 +80,8 @@ and pane functions; the README describes their fields.
 ### The app's screen
 
 `brainyard web` adds four endpoints for the page that shows the app; scripts can use them too.
-They exist only on a server started by `brainyard web`.
+They exist only on a server started by `brainyard web`, which serves the app at `/` and the
+dashboard at `/dashboard`.
 
 | Method | Path | Body | Returns |
 |---|---|---|---|

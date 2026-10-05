@@ -68,13 +68,13 @@ describe('the screen', () => {
     const lines = render(state, colour);
     expectScreen(lines, state);
     expect(lines.map(uncoloured)).toEqual(render(state, plain));
-    const selected = lines.filter((line) => line.includes('\u001b[36m▌'));
+    const selected = lines.filter((line) => line.includes('\u001b[94m▌'));
     expect(selected).toHaveLength(1);
     expect(uncoloured(selected[0]!)).toContain('auth refactor');
     expect(lines.join('\n')).toContain('\u001b[31m██');
     // The card of the selected agent takes the accent too.
     const agent = render(world({ selected: 'agent:codex' }), colour);
-    expect(agent[1]).toContain('\u001b[36m╭─');
+    expect(agent[1]).toContain('\u001b[94m╭─');
   });
 
   it('puts two cards in a row on a narrower screen, one on a narrow one, and asks for room below that', () => {

@@ -58,7 +58,8 @@ All notable changes to this project are documented here. The format follows
   `Origin` guard. A click opens a tab, selects a row, focuses a tile or picks a setting; a double
   click is Enter; the wheel moves the selection. Enter on a pane shows its CLI full screen with
   every key going to it and the wheel scrolling through its history, until Ctrl+Q; a paste
-  reaches it as one paste. `q` quits the app and the command; the panes keep running.
+  reaches it as one paste. `q` quits the app and the command; the panes keep running. The
+  dashboard and its playground are on the same server, at `/dashboard`.
 - `npm run demo`: the app in a browser on a made-up machine, for screenshots.
 - `brainyard serve`: the HTTP API alone, with no browser. Its token can come from
   `$BRAINYARD_TOKEN`, and `--json` prints `{url, port, token}` for the program that starts it.
@@ -76,6 +77,8 @@ All notable changes to this project are documented here. The format follows
   script); in a terminal it opens the app. `brainyard status` prints the table anywhere.
 - A pane taken full screen from the wall gets its tile's size back afterwards; it kept the
   terminal's size.
+- One accent everywhere: the app's is bright blue — Brainyard's indigo in most terminals, and in
+  the browser exactly the dashboard's — no longer cyan, which also means "working".
 - `brainyard serve` is no longer another name for `brainyard ui`: it opens no browser. Without
   `--port`, both take 4747 or the next free port, and both stop on `SIGTERM` as on Ctrl+C.
 

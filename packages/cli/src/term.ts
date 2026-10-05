@@ -45,7 +45,8 @@ const CODES: Record<Colour, string> = {
   magenta: '35',
   cyan: '36',
   gray: '90',
-  accent: '36',
+  // Bright blue: Brainyard's indigo in most terminals, and apart from cyan, which means working.
+  accent: '94',
 };
 
 /** Colours on or off, whatever the output is: the app draws the same frame for a terminal and a browser. */

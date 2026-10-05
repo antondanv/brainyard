@@ -208,6 +208,14 @@ describe('brainyard web: the server', () => {
     expect(policy).not.toContain("script-src 'unsafe-inline'");
   });
 
+  it('serves the dashboard and its playground at /dashboard, beside the app', async () => {
+    const dashboard = await call('/dashboard');
+    expect(dashboard.status).toBe(200);
+    expect(dashboard.body).toContain('brainyard ask');
+    expect(dashboard.body).not.toContain('/api/app/frames');
+    expect((await call('/nothing')).status).toBe(404);
+  });
+
   it('guards the app as the API: the token, the Host, the origin, JSON', async () => {
     expect((await call('/api/app/frames')).status).toBe(401);
     expect((await call('/api/app/frames', { headers: { ...auth, authorization: 'Bearer nope' } })).status).toBe(401);
