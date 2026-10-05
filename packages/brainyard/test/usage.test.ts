@@ -76,7 +76,7 @@ describe('Claude Code subscription windows from its own cache', () => {
     const other = await read(cache({ oauthAccount: { accountUuid: 'account-2' } }));
     expect(other).toMatchObject({
       limits: null,
-      limitsUnavailable: 'missing',
+      limitsUnavailable: 'other_account',
       detail: expect.stringContaining('another account'),
     });
     const none = await read({ oauthAccount: { accountUuid: 'account-1' } });
@@ -88,7 +88,63 @@ describe('Claude Code subscription windows from its own cache', () => {
   });
 });
 
+describe('where Claude Code keeps its cache', () => {
+  const windows = {
+    cachedUsageUtilization: { utilization: { five_hour: { utilization: 10 } } },
+  };
+
+  it('is the home folder without CLAUDE_CONFIG_DIR, and inside it with one', async () => {
+    const home = tempDir();
+    const store = join(home, '.claude');
+    mkdirSync(store, { recursive: true });
+    writeFileSync(join(home, '.claude.json'), JSON.stringify(windows));
+    const plain = await usage({
+      cwd: folder(),
+      brains: ['claude'],
+      limit: 0,
+      env: { HOME: home, CLAUDE_CONFIG_DIR: '' },
+    });
+    expect(plain.brains[0]).toMatchObject({ limitsSource: 'cache', limits: [{ window: 'five_hour' }] });
+    // Named, even as ~/.claude, the store keeps its own file: the one in the home folder is not it.
+    const named = await usage({
+      cwd: folder(),
+      brains: ['claude'],
+      limit: 0,
+      env: { HOME: home, CLAUDE_CONFIG_DIR: store },
+    });
+    expect(named.brains[0]).toMatchObject({ limits: null, limitsUnavailable: 'missing' });
+    writeFileSync(join(store, '.claude.json'), JSON.stringify(windows));
+    const kept = await usage({
+      cwd: folder(),
+      brains: ['claude'],
+      limit: 0,
+      env: { HOME: home, CLAUDE_CONFIG_DIR: store },
+    });
+    expect(kept.brains[0]).toMatchObject({ limitsSource: 'cache' });
+  });
+});
+
 describe('saved usage', () => {
+  it('reads sessions alone with limits: false, and asks no CLI for windows', async () => {
+    const home = tempDir();
+    writeFileSync(
+      join(home, '.claude.json'),
+      JSON.stringify({ cachedUsageUtilization: { utilization: { five_hour: { utilization: 10 } } } }),
+    );
+    const report = await usage({
+      cwd: folder(),
+      homes: { claude: home, codex: home, antigravity: home, opencode: home },
+      limits: false,
+    });
+    expect(report.brains.map((brain) => [brain.brain, brain.limitsUnavailable])).toEqual([
+      ['claude', 'not_requested'],
+      ['codex', 'not_requested'],
+      ['antigravity', 'not_requested'],
+      ['opencode', 'not_requested'],
+    ]);
+    await expect(usage({ limits: false, live: true })).rejects.toMatchObject({ kind: 'invalid_option' });
+  });
+
   it('exports usage and distinguishes unavailable data for every CLI', async () => {
     const home = tempDir();
     const report = await usage({

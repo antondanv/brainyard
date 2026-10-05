@@ -171,8 +171,8 @@ export function titleOf(session: SessionInfo, c: Paint, t: Translate, limit = 80
 
 /** Why a CLI shows no windows, in a few words. The app makes no paid call on its own. */
 export function whyNoLimits(brain: BrainUsage, t: Translate): string {
+  if (brain.limitsUnavailable === 'other_account') return t('cached for another account');
   if (brain.brain === 'claude' && brain.limitsUnavailable === 'missing' && !brain.error) {
-    if (/another account/.test(brain.detail ?? '')) return t('cached for another account');
     return t('not seen yet: /usage in Claude Code shows them');
   }
   if (brain.limitsUnavailable === 'not_requested') return t('not checked');

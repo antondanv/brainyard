@@ -34,7 +34,11 @@ export function claudeCachedLimits(path: string): BrainUsage {
   const account = str(obj(data.oauthAccount).accountUuid);
   const owner = str(cached.accountUuid);
   if (account && owner && account !== owner) {
-    return missing('claude', 'missing', 'Claude Code cached its usage for another account than the one signed in.');
+    return missing(
+      'claude',
+      'other_account',
+      'Claude Code cached its usage for another account than the one signed in.',
+    );
   }
   const utilization = obj(cached.utilization);
   const limits: LimitWindow[] = [];

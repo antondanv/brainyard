@@ -41,12 +41,7 @@ function windowText(limit: LimitWindow, c: Paint, now: number): string {
 /** Why a CLI shows no windows, in the command's words where the reason is a flag. */
 function noLimits(brain: BrainUsage): string {
   // Claude Code keeps what its /usage fetched; until then only a real call tells.
-  if (
-    brain.brain === 'claude' &&
-    brain.limitsUnavailable === 'missing' &&
-    !brain.error &&
-    !/another account/.test(brain.detail ?? '')
-  ) {
+  if (brain.brain === 'claude' && brain.limitsUnavailable === 'missing' && !brain.error) {
     return 'not seen yet: /usage in Claude Code shows them, or --live (one tiny real call)';
   }
   if (brain.limitsUnavailable === 'not_requested') {

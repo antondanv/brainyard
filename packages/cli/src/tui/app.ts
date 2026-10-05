@@ -456,7 +456,7 @@ export function apiSources(): Sources {
     live: () => liveSessions({ panes: {} }),
     sessions: (cwd) => sessions({ cwd, live: false, limit: FOLDER_LIMIT }),
     // Saved stores only: the quotas are read on their own, less often.
-    usage: async (cwd) => (await usage({ cwd, limit: FOLDER_LIMIT, offline: true })).sessions,
+    usage: async (cwd) => (await usage({ cwd, limit: FOLDER_LIMIT, offline: true, limits: false })).sessions,
     startPane: (options) => startPane(options),
     closePane: (pane) => closePane(pane),
     stopSession: (options) => stopSession(options),

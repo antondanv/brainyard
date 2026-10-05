@@ -56,6 +56,11 @@ export interface UsageOptions {
   live?: boolean;
   /** Read stores only; skip Antigravity and OpenCode Go quota requests. Defaults to false. */
   offline?: boolean;
+  /**
+   * Subscription windows too. Defaults to true; false reads the sessions alone, and every CLI's
+   * windows come back `not_requested`: for a program that reads them on a schedule of their own.
+   */
+  limits?: boolean;
   commands?: Partial<Record<BrainId, string | string[]>>;
   env?: NodeJS.ProcessEnv;
   /** Timeout for quota checks in milliseconds, from 1 to 2^31-1. */
@@ -90,7 +95,8 @@ export interface BrainUsage {
   limitsSource: 'rollout' | 'live' | 'cli' | 'api' | 'cache' | null;
   /** ISO snapshot observation time; Codex uses the persisted event timestamp. */
   limitsObservedAt: string | null;
-  limitsUnavailable: 'not_requested' | 'missing' | 'unsupported' | 'failed' | null;
+  /** `other_account`: Claude Code's cache belongs to another account than the one signed in. */
+  limitsUnavailable: 'not_requested' | 'missing' | 'other_account' | 'unsupported' | 'failed' | null;
   detail?: string;
   /** A failed live check can still have delivered useful limit windows. */
   error?: RunError;
@@ -110,6 +116,8 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
     throw new BrainyardError('invalid_option', 'usage limit must be a nonnegative integer');
   if (options.offline && options.live)
     throw new BrainyardError('invalid_option', 'offline and live cannot both be enabled');
+  if (options.limits === false && options.live)
+    throw new BrainyardError('invalid_option', 'live asks for limits, and limits: false says not to');
   if (
     options.timeoutMs !== undefined &&
     (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0 || options.timeoutMs > 2_147_483_647)
@@ -119,6 +127,8 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
   const places = pathVariants(cwd);
   const env = { ...process.env, ...options.env };
   const report: UsageReport = { brains: [], sessions: [], checkedAt: new Date().toISOString() };
+  // The windows, unless only the sessions are wanted.
+  const windows = options.limits !== false;
   for (const brain of brains) {
     const home = options.homes?.[brain] ?? storeHome(brain, env);
     const list = await sessions({
@@ -133,9 +143,11 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
     const selected = list.filter((session) => !options.sessionId || session.id === options.sessionId);
     if (brain === 'opencode') {
       report.brains.push(
-        options.offline
-          ? unavailable(brain, 'not_requested', 'OpenCode Go quota requests are disabled by offline: true.')
-          : await opencodeLimits(home, env, { ...options, cwd }),
+        !windows
+          ? notAsked(brain)
+          : options.offline
+            ? unavailable(brain, 'not_requested', 'OpenCode Go quota requests are disabled by offline: true.')
+            : await opencodeLimits(home, env, { ...options, cwd }),
       );
       report.sessions.push(...(await opencodeSessions(home, selected, options.prices)));
     } else if (brain === 'claude') {
@@ -144,7 +156,13 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
         const samples = await claudeSamples(files.get(session.id));
         report.sessions.push(summarize(session, samples, 'transcript', options.prices));
       }
-      report.brains.push(options.live ? await claudeLimits(home, env, options) : claudeCachedLimits(claudeFile(home)));
+      report.brains.push(
+        !windows
+          ? notAsked(brain)
+          : options.live
+            ? await claudeLimits(home, env, options)
+            : claudeCachedLimits(claudeFile(home, env, options.homes?.claude !== undefined)),
+      );
     } else if (brain === 'codex') {
       const snapshots = new Map<string, LimitSnapshot>();
       const files = rolloutFiles(join(home, 'sessions'));
@@ -163,21 +181,25 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
       for (const session of wanted.values()) report.sessions.push(summarize(session, [], 'rollout', options.prices));
       const latest = [...snapshots.values()].sort((a, b) => b.at.localeCompare(a.at));
       report.brains.push(
-        latest.length
-          ? {
-              brain,
-              limits: latest.flatMap((snapshot) => snapshot.windows.map((window) => ({ ...window }))),
-              limitsSource: 'rollout',
-              limitsObservedAt: latest[0]!.at,
-              limitsUnavailable: null,
-            }
-          : unavailable(brain, 'missing', 'No readable rate_limits snapshot in the Codex rollouts.'),
+        !windows
+          ? notAsked(brain)
+          : latest.length
+            ? {
+                brain,
+                limits: latest.flatMap((snapshot) => snapshot.windows.map((window) => ({ ...window }))),
+                limitsSource: 'rollout',
+                limitsObservedAt: latest[0]!.at,
+                limitsUnavailable: null,
+              }
+            : unavailable(brain, 'missing', 'No readable rate_limits snapshot in the Codex rollouts.'),
       );
     } else {
       report.brains.push(
-        options.offline
-          ? unavailable(brain, 'not_requested', 'Antigravity /usage quota requests are disabled by offline: true.')
-          : await agyLimits(env, options),
+        !windows
+          ? notAsked(brain)
+          : options.offline
+            ? unavailable(brain, 'not_requested', 'Antigravity /usage quota requests are disabled by offline: true.')
+            : await agyLimits(env, options),
       );
       for (const session of selected) {
         const safe = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(session.id);
@@ -211,12 +233,16 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
 }
 
 /**
- * Claude Code's global file: `~/.claude.json` beside the default `~/.claude`,
- * or `.claude.json` inside a store of its own (`CLAUDE_CONFIG_DIR`, `homes`).
+ * Claude Code's global file: `.claude.json` in `CLAUDE_CONFIG_DIR` when that is set (so in a store
+ * named by `homes` too), else in the home folder — `~/.claude.json` beside the default `~/.claude`.
  */
-function claudeFile(home: string): string {
-  const standard = join(homedir(), '.claude');
-  return resolve(home) === standard ? join(homedir(), '.claude.json') : join(home, '.claude.json');
+function claudeFile(home: string, env: NodeJS.ProcessEnv, given: boolean): string {
+  if (given || env.CLAUDE_CONFIG_DIR?.trim()) return join(home, '.claude.json');
+  return join(env.HOME?.trim() || homedir(), '.claude.json');
+}
+
+function notAsked(brain: BrainId): BrainUsage {
+  return unavailable(brain, 'not_requested', 'Subscription windows were not asked for (limits: false).');
 }
 
 function storeHome(brain: BrainId, env: NodeJS.ProcessEnv): string {
