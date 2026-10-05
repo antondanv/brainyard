@@ -10,6 +10,10 @@
  * - the Host header must name this server, which defeats DNS rebinding;
  * - state-changing calls must be JSON from this origin, which a cross-site
  *   form or a simple request cannot produce.
+ *
+ * With an app (`brainyard web`) the page is the app's screen: its frames
+ * come as server-sent events, keys, clicks and the size go back as JSON,
+ * all under /api/app/ and the same guard.
  */
 import { spawn } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -46,6 +50,8 @@ import {
 } from '@antondanv/brainyard';
 
 import { readPanes, typeInto } from '../panes.js';
+import type { MouseAction } from '../tui/state.js';
+import type { WebEvent, WebScreen } from '../tui/web.js';
 import { VERSION } from '../version.js';
 import { FAVICON, page } from './page.js';
 
@@ -55,6 +61,8 @@ export interface ServeOptions {
   host?: string;
   /** Defaults to a random one per start. */
   token?: string;
+  /** The app to show at `/` instead of the dashboard: `brainyard web`. */
+  app?: WebScreen;
 }
 
 export interface Dashboard {
@@ -82,6 +90,7 @@ interface Tracked {
   refused?: ReturnType<typeof errorBody>;
 }
 
+const MOUSE: readonly MouseAction[] = ['click', 'double', 'wheel-up', 'wheel-down'];
 const MAX_RUNS = 50;
 const MAX_BODY = 1_000_000;
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
@@ -110,7 +119,7 @@ export async function serve(options: ServeOptions = {}): Promise<Dashboard> {
     res.setHeader('Referrer-Policy', 'no-referrer');
 
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-      const { html, scriptHash } = page(VERSION);
+      const { html, scriptHash } = page(VERSION, options.app ? 'app' : 'dashboard');
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
@@ -193,6 +202,70 @@ export async function serve(options: ServeOptions = {}): Promise<Dashboard> {
     if (parts[0] === 'panes') {
       await panesApi(req, res, method, parts.slice(1), url.searchParams);
       return;
+    }
+    if (parts[0] === 'app' && options.app) {
+      await appApi(req, res, method, parts.slice(1), options.app);
+      return;
+    }
+    send(res, 404, { error: { kind: 'invalid_option', message: 'no such endpoint' } });
+  }
+
+  async function appApi(
+    req: IncomingMessage,
+    res: ServerResponse,
+    method: string,
+    rest: string[],
+    app: WebScreen,
+  ): Promise<void> {
+    if (method === 'GET' && rest.length === 1 && rest[0] === 'frames') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-store',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      const write = (text: string) => {
+        if (!res.writableEnded && !res.destroyed) res.write(text);
+      };
+      const unwatch = app.watch((event: WebEvent) => write(`event: ${event.kind}\ndata: ${JSON.stringify(event)}\n\n`));
+      const keepAlive = setInterval(() => write(': keep-alive\n\n'), 15_000);
+      req.on('close', () => {
+        unwatch();
+        clearInterval(keepAlive);
+      });
+      return;
+    }
+    if (method === 'POST' && rest.length === 1) {
+      const body = await readJson(req);
+      switch (rest[0]) {
+        case 'input': {
+          if (typeof body.data !== 'string' || !body.data) {
+            throw new BrainyardError('invalid_option', 'nothing to type: give data, the bytes a terminal would send');
+          }
+          if (body.paste === true) app.paste(body.data);
+          else app.input(body.data);
+          send(res, 200, { ok: true });
+          return;
+        }
+        case 'mouse': {
+          const action = MOUSE.find((name) => name === body.action);
+          if (!action) throw new BrainyardError('invalid_option', `action is one of ${MOUSE.join(', ')}`);
+          const x = count(body.x, 'x', 0);
+          const y = count(body.y, 'y', 0);
+          if (x === undefined || y === undefined) throw new BrainyardError('invalid_option', 'mouse wants x and y');
+          app.mouse(action, x, y);
+          send(res, 200, { ok: true });
+          return;
+        }
+        case 'resize': {
+          const width = count(body.width, 'width');
+          const height = count(body.height, 'height');
+          if (!width || !height) throw new BrainyardError('invalid_option', 'resize wants width and height');
+          app.resize(width, height);
+          send(res, 200, { ok: true });
+          return;
+        }
+      }
     }
     send(res, 404, { error: { kind: 'invalid_option', message: 'no such endpoint' } });
   }

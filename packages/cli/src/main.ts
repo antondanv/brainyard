@@ -51,6 +51,7 @@ ${out.bold('Usage')}
   brainyard pane attach <pane>       the pane full screen; Ctrl+Q — back
   brainyard pane show|send|close …   print its screen · type into it · end it (the session stays)
   brainyard usage [brain...]         what the subscriptions have left; tokens and cost of this folder's sessions
+  brainyard web                      the app in a browser, on this machine (127.0.0.1)
   brainyard ui                       local dashboard: status, models and a playground
   brainyard serve                    the HTTP API alone, for scripts in any language (no browser)
 
@@ -81,6 +82,7 @@ ${out.bold('pane')}     start <brain> [prompt]: open's flags but --bg, and --lab
          <pane> is its name, or the start of its name or of its session's id
 ${out.bold('usage')}    --cwd <dir>  --session <id>  --limits (subscriptions only)  --limit <n> (per CLI)  --headless
          --prices <file.json>  --offline (saved stores only)  --live (one tiny real Claude call)  --timeout <sec>  --json
+${out.bold('web')}      --port <n> (4747)  --host <addr> (127.0.0.1)  --token <t>  --no-open  --json
 ${out.bold('ui')}       --port <n> (4747)  --host <addr> (127.0.0.1)  --token <t>  --no-open  --json
 ${out.bold('serve')}    --port <n> (4747)  --host <addr> (127.0.0.1)  --token <t> ($BRAINYARD_TOKEN)
          --json: one line on stdout, {url, port, token}, for the program that started it
@@ -125,6 +127,8 @@ async function main(argv: string[]): Promise<number> {
       return panesCommand(rest);
     case 'pane':
       return paneCommand(rest);
+    case 'web':
+      return serverCommand(rest, 'web');
     case 'ui':
       return serverCommand(rest, 'ui');
     case 'serve':
@@ -512,8 +516,11 @@ async function runCommand(args: string[]): Promise<number> {
 // ---------------------------------------------------------------------------
 // ui / serve
 // ---------------------------------------------------------------------------
-/** `ui` opens the dashboard in a browser; `serve` is the same HTTP API for scripts, with no browser. */
-async function serverCommand(args: string[], mode: 'ui' | 'serve'): Promise<number> {
+/**
+ * `web` shows the app in a browser, `ui` the dashboard; `serve` is the same HTTP API for scripts, with
+ * no browser.
+ */
+async function serverCommand(args: string[], mode: 'web' | 'ui' | 'serve'): Promise<number> {
   const { values } = parse(args, {
     port: { type: 'string', short: 'p' },
     host: { type: 'string' },
@@ -527,37 +534,50 @@ async function serverCommand(args: string[], mode: 'ui' | 'serve'): Promise<numb
   // A script keeps its token in the environment rather than in the process list.
   const token = values.token ?? (mode === 'serve' ? process.env.BRAINYARD_TOKEN?.trim() || undefined : undefined);
   const { serve, openBrowser } = await import('./ui/server.js');
+  // q in the browser ends the app as it does in a terminal: the server goes with it.
+  let quit: () => void = () => undefined;
+  const app = mode === 'web' ? (await import('./tui/web.js')).startWeb({ onQuit: () => quit() }) : undefined;
   // Without --port, 4747 or the next free port.
   const server = await serve({
     ...(port !== undefined ? { port } : {}),
     ...(values.host ? { host: values.host } : {}),
     ...(token ? { token } : {}),
+    ...(app ? { app } : {}),
   });
   // One line a parent process reads to know where to call.
   if (values.json) {
     process.stdout.write(`${JSON.stringify({ url: server.origin, port: server.port, token: server.token })}\n`);
   }
+  const title = { web: 'Brainyard', ui: 'Brainyard dashboard', serve: 'Brainyard API' }[mode];
   const where =
-    mode === 'ui'
-      ? `${err.bold('Brainyard dashboard')} ${err.dim('— Ctrl+C to stop')}\n  ${err.cyan(server.url)}\n`
-      : `${err.bold('Brainyard API')} ${err.dim('— Ctrl+C to stop')}\n  ${err.cyan(server.origin)}  ${err.dim(`token ${server.token}`)}\n`;
+    mode === 'serve'
+      ? `${err.bold(title)} ${err.dim('— Ctrl+C to stop')}\n  ${err.cyan(server.origin)}  ${err.dim(`token ${server.token}`)}\n`
+      : `${err.bold(title)} ${err.dim('— Ctrl+C to stop')}\n  ${err.cyan(server.url)}\n`;
   process.stderr.write(where);
   if (!server.local) {
     process.stderr.write(
       err.yellow('  warning: listening beyond localhost — anyone with the link can run agents on this machine\n'),
     );
   }
-  if (mode === 'ui' && !values['no-open']) openBrowser(server.url);
+  if (mode !== 'serve' && !values['no-open']) openBrowser(server.url);
   await new Promise<void>((resolve) => {
-    const stop = (signal: NodeJS.Signals) => {
+    const stop = (signal?: NodeJS.Signals) => {
       process.off('SIGINT', stop);
       process.off('SIGTERM', stop);
       if (signal === 'SIGINT') process.stderr.write('\n');
+      app?.stop();
       void server.close().then(resolve);
+    };
+    quit = () => {
+      process.stderr.write(err.dim('quit from the browser; the panes keep running\n'));
+      // The answer to the key that quit, and the word to the page, go out first.
+      setTimeout(stop, 200);
     };
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);
   });
+  // The app may still be asking a CLI for its status: of no use now.
+  if (app) process.exit(0);
   return 0;
 }
 

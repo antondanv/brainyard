@@ -7,11 +7,18 @@ export interface Page {
   scriptHash: string;
 }
 
-let template: string | undefined;
+const templates = new Map<string, string>();
 
-/** The dashboard: one static HTML file with inline CSS and JS, no build step and no CDN. */
-export function page(version: string): Page {
-  template ??= readFileSync(new URL('./dashboard.html', import.meta.url), 'utf8');
+/**
+ * A page: one static HTML file with inline CSS and JS, no build step and no CDN — the dashboard
+ * (`brainyard ui`), or the app's screen (`brainyard web`).
+ */
+export function page(version: string, name: 'dashboard' | 'app' = 'dashboard'): Page {
+  let template = templates.get(name);
+  if (template === undefined) {
+    template = readFileSync(new URL(`./${name}.html`, import.meta.url), 'utf8');
+    templates.set(name, template);
+  }
   const html = template.replaceAll('{{VERSION}}', version);
   const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? '';
   return { html, scriptHash: `sha256-${createHash('sha256').update(script, 'utf8').digest('base64')}` };

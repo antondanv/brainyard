@@ -55,8 +55,8 @@ export interface Sources {
   }): Promise<PaneStart>;
   closePane(pane: string): Promise<boolean>;
   stopSession(options: { brain: BrainId; sessionId: string; cwd: string }): Promise<'stopped' | 'not-running'>;
-  /** A tile's screen. */
-  capture(pane: string): Promise<PaneScreen | undefined>;
+  /** A tile's screen; `scroll` rows up into its history. */
+  capture(pane: string, scroll?: number): Promise<PaneScreen | undefined>;
   /** A pane made the size of its tile. */
   resize(pane: string, width: number, height: number): Promise<boolean>;
   /** Bytes typed into a tile. */
@@ -67,8 +67,11 @@ export interface Sources {
 export interface AppHost {
   /** A new frame: exactly the state's height in rows of its width in cells. */
   draw(lines: string[]): void;
-  /** Gives the pane the whole screen; resolves when the person is back (Ctrl+Q) or the CLI has ended. */
-  attach(pane: string): Promise<void>;
+  /**
+   * Gives the pane the whole screen; resolves when the person is back (Ctrl+Q) or the CLI has ended.
+   * The state is the app's at that moment: its size and language.
+   */
+  attach(pane: string, state: State): Promise<void>;
   /** Ctrl+L: whatever is on screen is drawn anew. */
   redraw?(): void;
   /** Someone started waiting for the person. */
@@ -248,11 +251,13 @@ export function startApp(options: AppOptions): App {
   async function attach(pane: string): Promise<void> {
     attached = true;
     try {
-      await host.attach(pane);
+      await host.attach(pane, state);
     } catch (error) {
       dispatch({ kind: 'note', note: { text: messageOf(error), tone: 'error' } });
     } finally {
       attached = false;
+      // Full screen, the pane took the screen's size: on the wall it gets its tile's again.
+      sized.delete(pane);
       dispatch({ kind: 'resize', width: state.width, height: state.height });
       for (const source of ['panes', 'live', 'sessions', 'usage'] as const) read(source);
     }
@@ -455,7 +460,7 @@ export function apiSources(): Sources {
     startPane: (options) => startPane(options),
     closePane: (pane) => closePane(pane),
     stopSession: (options) => stopSession(options),
-    capture: (pane) => capturePane(pane),
+    capture: (pane, scroll) => capturePane(pane, scroll ? { scroll } : {}),
     resize: (pane, width, height) => resizePane(pane, width, height),
     send: (pane, data) => sendToPane(pane, data),
     saveSettings: (settings) => saveSettings(settings),

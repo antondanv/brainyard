@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brainyard</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+/* The app's screen, cell for cell as in a terminal. The 16 colours are this terminal's; themes with
+   256 or true colours bring their own. */
+:root {
+  --bg: #0b0d11;
+  --fg: #d4d8e1;
+  --c0: #1b1f27;
+  --c1: #ff6b6b;
+  --c2: #5ad08a;
+  --c3: #e6c46e;
+  --c4: #6ea8ff;
+  --c5: #c792ea;
+  --c6: #5ccfe0;
+  --c7: #d4d8e1;
+  --c8: #6b7280;
+  --c9: #ff8c8c;
+  --c10: #7ee2a4;
+  --c11: #f0d58c;
+  --c12: #94bfff;
+  --c13: #dbb2f4;
+  --c14: #85e0ec;
+  --c15: #f5f7fa;
+  --veil: rgba(11, 13, 17, .86);
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "JetBrains Mono", "Cascadia Mono", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #fbfaf7;
+    --fg: #25282e;
+    --c0: #25282e;
+    --c1: #cc3b36;
+    --c2: #17804a;
+    --c3: #9a6a00;
+    --c4: #2f6fdc;
+    --c5: #8b4fd1;
+    --c6: #137f8b;
+    --c7: #d8d4c9;
+    --c8: #8a8f99;
+    --c9: #e0524c;
+    --c10: #1f9a5b;
+    --c11: #b07d00;
+    --c12: #4a86ee;
+    --c13: #a06ae0;
+    --c14: #1b96a3;
+    --c15: #0d0f12;
+    --veil: rgba(251, 250, 247, .9);
+    color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+/* biome-ignore lint/complexity/noImportantStyles: the hidden attribute must beat every display rule */
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); }
+#screen {
+  position: absolute; inset: 0; padding: 10px 12px; outline: none;
+  font: 14px/1.17 var(--mono); font-variant-ligatures: none; font-kerning: none;
+  white-space: pre; cursor: default; -webkit-font-smoothing: antialiased;
+}
+#screen > div { height: var(--row, 16.4px); overflow: hidden; }
+#screen ::selection { background: color-mix(in srgb, var(--c4) 40%, transparent); }
+.b { font-weight: 700; }
+.d { opacity: .62; }
+.i { font-style: italic; }
+.u { text-decoration: underline; }
+.s { text-decoration: line-through; }
+.u.s { text-decoration: underline line-through; }
+.h { visibility: hidden; }
+.w { display: inline-block; white-space: pre; }
+#probe { position: absolute; visibility: hidden; white-space: pre; font: 14px/1.17 var(--mono); font-variant-ligatures: none; }
+#veil { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--veil); font: 14px/1.6 var(--mono); padding: 24px; text-align: center; }
+#veil code { color: var(--c6); }
+</style>
+</head>
+<body>
+<div id="screen" role="application" aria-label="Brainyard"></div>
+<span id="probe" aria-hidden="true">MMMMMMMMMMMMMMMMMMMM</span>
+<div id="veil" hidden><div id="veil-text"></div></div>
+<script>
+(() => {
+  'use strict';
+  const screen = document.getElementById('screen');
+  const probe = document.getElementById('probe');
+  const veil = document.getElementById('veil');
+  const veilText = document.getElementById('veil-text');
+
+  // ----- the token: from the #fragment, kept for this tab only -------------
+  const token = (() => {
+    const found = /token=([^&]+)/.exec(location.hash);
+    if (found) {
+      try { sessionStorage.setItem('brainyard.token', found[1]); } catch { /* private mode */ }
+      history.replaceState(null, '', location.pathname);
+      return found[1];
+    }
+    try { return sessionStorage.getItem('brainyard.token') || ''; } catch { return ''; }
+  })();
+
+  function say(lines) {
+    veilText.replaceChildren(...lines.map((line) => {
+      const div = document.createElement('div');
+      for (const [index, part] of line.split('`').entries()) {
+        if (index % 2) { const code = document.createElement('code'); code.textContent = part; div.append(code); }
+        else div.append(part);
+      }
+      return div;
+    }));
+    veil.hidden = false;
+  }
+  const NO_TOKEN = ['This page needs its access token.', 'Open the link `brainyard web` printed in its terminal.'];
+
+  // ----- colours: SGR codes as a terminal reads them -----------------------
+  const CUBE = [0, 95, 135, 175, 215, 255];
+  function colour(index) {
+    if (index < 16) return `var(--c${index})`;
+    if (index < 232) {
+      const at = index - 16;
+      return `rgb(${CUBE[Math.floor(at / 36)]},${CUBE[Math.floor(at / 6) % 6]},${CUBE[at % 6]})`;
+    }
+    const grey = 8 + (index - 232) * 10;
+    return `rgb(${grey},${grey},${grey})`;
+  }
+
+  /** Extended colours: `38;5;n`, `38;2;r;g;b` or with colons, `38:5:n`, `38:2::r:g:b`. */
+  function extended(list, at) {
+    const head = list[at];
+    if (head.includes(':')) {
+      const parts = head.split(':').slice(1);
+      if (parts[0] === '5') return [colour(Number(parts[1]) & 255), at];
+      if (parts[0] === '2') {
+        const [r, g, b] = parts.slice(-3).map(Number);
+        return [`rgb(${r},${g},${b})`, at];
+      }
+      return [undefined, at];
+    }
+    if (list[at + 1] === '5') return [colour(Number(list[at + 2]) & 255), at + 2];
+    if (list[at + 1] === '2') return [`rgb(${Number(list[at + 2])},${Number(list[at + 3])},${Number(list[at + 4])})`, at + 4];
+    return [undefined, at];
+  }
+
+  function sgr(style, params) {
+    const list = params === '' ? ['0'] : params.split(';');
+    for (let at = 0; at < list.length; at++) {
+      const [code, sub] = list[at].split(':');
+      const n = Number(code);
+      if (n === 0) { for (const key of Object.keys(style)) delete style[key]; }
+      else if (n === 1) style.b = true;
+      else if (n === 2) style.d = true;
+      else if (n === 3) style.i = true;
+      else if (n === 4) style.u = sub !== '0';
+      else if (n === 7) style.v = true;
+      else if (n === 8) style.h = true;
+      else if (n === 9) style.s = true;
+      else if (n === 22) { delete style.b; delete style.d; }
+      else if (n === 23) delete style.i;
+      else if (n === 24) delete style.u;
+      else if (n === 27) delete style.v;
+      else if (n === 28) delete style.h;
+      else if (n === 29) delete style.s;
+      else if (n >= 30 && n <= 37) style.fg = colour(n - 30);
+      else if (n >= 90 && n <= 97) style.fg = colour(n - 90 + 8);
+      else if (n === 39) delete style.fg;
+      else if (n >= 40 && n <= 47) style.bg = colour(n - 40);
+      else if (n >= 100 && n <= 107) style.bg = colour(n - 100 + 8);
+      else if (n === 49) delete style.bg;
+      else if (n === 38 || n === 48) {
+        const [value, last] = extended(list, at);
+        at = last;
+        if (value) style[n === 38 ? 'fg' : 'bg'] = value;
+      }
+    }
+  }
+
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: SGR codes are what a frame is made of.
+  const CODE = /\u001b\[([0-9;:]*)m/g;
+
+  // Letters every monospace font has keep their place. Anything else — lines, symbols, CJK, emoji — may
+  // come from another font with another width: a run of them is held to the cells a terminal gives it,
+  // or the rest of the row would drift.
+  const NARROW = /^[\u0020-\u007e\u00a0-\u024f\u0370-\u03ff\u0400-\u04ff]$/;
+  const WIDE = [
+    [0x1100, 0x115f], [0x2e80, 0x303e], [0x3041, 0x33ff], [0x3400, 0x4dbf], [0x4e00, 0x9fff], [0xa000, 0xa4cf],
+    [0xac00, 0xd7a3], [0xf900, 0xfaff], [0xfe30, 0xfe4f], [0xff00, 0xff60], [0xffe0, 0xffe6], [0x1f300, 0x1f64f],
+    [0x1f900, 0x1f9ff], [0x20000, 0x3fffd],
+  ];
+  const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  function cellsOf(grapheme) {
+    const code = grapheme.codePointAt(0) || 0;
+    if (code < 0x20 || (code >= 0x7f && code < 0xa0) || /^\p{Mark}+$/u.test(grapheme)) return 0;
+    if (grapheme.includes('\ufe0f') && /\p{Extended_Pictographic}/u.test(grapheme)) return 2;
+    return WIDE.some(([from, to]) => code >= from && code <= to) ? 2 : 1;
+  }
+  function pieces(text) {
+    if (/^[\u0020-\u007e]*$/.test(text)) return [document.createTextNode(text)];
+    const out = [];
+    let plain = '';
+    let held = '';
+    let cells = 0;
+    const flush = () => {
+      if (plain) out.push(document.createTextNode(plain));
+      if (held) {
+        const span = document.createElement('span');
+        span.className = 'w';
+        span.style.width = `${cells}ch`;
+        span.textContent = held;
+        out.push(span);
+      }
+      plain = '';
+      held = '';
+      cells = 0;
+    };
+    for (const { segment } of graphemes.segment(text)) {
+      if (NARROW.test(segment)) {
+        if (held) flush();
+        plain += segment;
+      } else {
+        if (plain) { out.push(document.createTextNode(plain)); plain = ''; }
+        held += segment;
+        cells += cellsOf(segment);
+      }
+    }
+    flush();
+    return out;
+  }
+
+  /** A frame's row as spans: the text stays text, nothing in it is read as HTML. */
+  function row(line) {
+    const out = [];
+    const style = {};
+    let last = 0;
+    const push = (text) => {
+      if (!text) return;
+      const keys = Object.keys(style);
+      if (keys.length === 0) { out.push(...pieces(text)); return; }
+      const span = document.createElement('span');
+      span.append(...pieces(text));
+      const flags = ['b', 'd', 'i', 'u', 's', 'h'].filter((flag) => style[flag]);
+      if (flags.length) span.className = flags.join(' ');
+      let fg = style.fg;
+      let bg = style.bg;
+      if (style.v) { [fg, bg] = [bg || 'var(--bg)', fg || 'var(--fg)']; }
+      if (fg) span.style.color = fg;
+      if (bg) span.style.backgroundColor = bg;
+      out.push(span);
+    };
+    CODE.lastIndex = 0;
+    for (let match = CODE.exec(line); match; match = CODE.exec(line)) {
+      push(line.slice(last, match.index));
+      sgr(style, match[1]);
+      last = CODE.lastIndex;
+    }
+    push(line.slice(last));
+    return out;
+  }
+
+  // ----- frames ----------------------------------------------------------------
+  const rows = [];
+  function frame(event) {
+    if (event.full || rows.length !== event.height) {
+      while (rows.length < event.height) {
+        const div = document.createElement('div');
+        rows.push(div);
+        screen.append(div);
+      }
+      while (rows.length > event.height) rows.pop().remove();
+      if (event.full) for (const div of rows) div.replaceChildren();
+    }
+    for (const [index, line] of Object.entries(event.rows)) rows[Number(index)]?.replaceChildren(...row(line));
+  }
+
+  // The bell: a short tone once the page has been used (browsers want a gesture first), and the title.
+  let audio;
+  function bell() {
+    try {
+      audio ??= new AudioContext();
+      const tone = audio.createOscillator();
+      const gain = audio.createGain();
+      tone.frequency.value = 880;
+      gain.gain.setValueAtTime(0.08, audio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.25);
+      tone.connect(gain).connect(audio.destination);
+      tone.start();
+      tone.stop(audio.currentTime + 0.25);
+    } catch { /* no sound: the title still says it */ }
+    if (document.hidden) document.title = '⚠ Brainyard';
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) document.title = 'Brainyard'; });
+
+  let ended = false;
+  async function watch() {
+    let res;
+    try {
+      res = await fetch('/api/app/frames', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+    } catch {
+      return lost();
+    }
+    if (res.status === 401) return say(NO_TOKEN);
+    if (!res.ok || !res.body) return lost();
+    veil.hidden = true;
+    fit(true);
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = '';
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        for (let at = buffer.indexOf('\n\n'); at >= 0; at = buffer.indexOf('\n\n')) {
+          const chunk = buffer.slice(0, at);
+          buffer = buffer.slice(at + 2);
+          const data = chunk.split('\n').filter((line) => line.startsWith('data: ')).map((line) => line.slice(6)).join('\n');
+          if (!data) continue;
+          const event = JSON.parse(data);
+          if (event.kind === 'frame') frame(event);
+          else if (event.kind === 'bell') bell();
+          else if (event.kind === 'quit') ended = true;
+        }
+      }
+    } catch { /* the server went away */ }
+    lost();
+  }
+
+  function lost() {
+    if (ended) return say(['Brainyard has quit; the panes keep running.', 'Start it again: `brainyard web`']);
+    say(['Brainyard is not answering.', 'Is `brainyard web` still running? Trying again…']);
+    setTimeout(watch, 2000);
+  }
+
+  // ----- what goes back: keys, pastes, clicks, the size, in the order they happened
+  const queue = [];
+  let sending = false;
+  function post(path, body) {
+    const last = queue[queue.length - 1];
+    // Keys typed fast go together.
+    if (last && path === '/api/app/input' && last.path === path && !last.body.paste && !body.paste) last.body.data += body.data;
+    else queue.push({ path, body });
+    if (!sending) void drain();
+  }
+  async function drain() {
+    sending = true;
+    while (queue.length > 0) {
+      const { path, body } = queue.shift();
+      try {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (res.status === 401) say(NO_TOKEN);
+      } catch { /* lost(): the stream says so */ }
+    }
+    sending = false;
+  }
+  const type = (data) => post('/api/app/input', { data });
+
+  // ----- the size: as many cells as the window holds -----------------------
+  const cell = { width: 8.4, height: 16.4 };
+  let size = { width: 0, height: 0 };
+  function fit(force) {
+    const box = probe.getBoundingClientRect();
+    if (box.width > 0) cell.width = box.width / probe.textContent.length;
+    if (box.height > 0) cell.height = box.height;
+    screen.style.setProperty('--row', `${cell.height}px`);
+    const style = getComputedStyle(screen);
+    const inner = {
+      width: screen.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+      height: screen.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+    };
+    const next = { width: Math.max(20, Math.floor(inner.width / cell.width)), height: Math.max(5, Math.floor(inner.height / cell.height)) };
+    if (!force && next.width === size.width && next.height === size.height) return;
+    size = next;
+    post('/api/app/resize', size);
+  }
+  let resizing;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizing);
+    resizing = setTimeout(() => fit(false), 80);
+  });
+
+  // ----- keys: the bytes a terminal sends ------------------------------------
+  const KEYS = {
+    Enter: '\r', Backspace: '\x7f', Tab: '\t', Escape: '\x1b',
+    ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowRight: '\x1b[C', ArrowLeft: '\x1b[D',
+    Home: '\x1b[H', End: '\x1b[F', PageUp: '\x1b[5~', PageDown: '\x1b[6~', Insert: '\x1b[2~', Delete: '\x1b[3~',
+    F1: '\x1bOP', F2: '\x1bOQ', F3: '\x1bOR', F4: '\x1bOS', F5: '\x1b[15~', F6: '\x1b[17~',
+    F7: '\x1b[18~', F8: '\x1b[19~', F9: '\x1b[20~', F10: '\x1b[21~', F11: '\x1b[23~', F12: '\x1b[24~',
+  };
+  const ARROWS = { ArrowUp: 'A', ArrowDown: 'B', ArrowRight: 'C', ArrowLeft: 'D', Home: 'H', End: 'F' };
+  const CONTROL = { BracketLeft: '\x1b', Backslash: '\x1c', BracketRight: '\x1d', Space: '\x00', Slash: '\x1f', Digit2: '\x00', Digit6: '\x1e', Minus: '\x1f' };
+  const selected = () => String(window.getSelection() || '');
+
+  function bytes(event) {
+    const { key, code } = event;
+    if (key === 'Tab' && event.shiftKey) return '\x1b[Z';
+    // Arrows with Shift, Alt or Ctrl: xterm's modifier codes.
+    if (ARROWS[key] && (event.shiftKey || event.altKey || event.ctrlKey)) {
+      const mod = 1 + (event.shiftKey ? 1 : 0) + (event.altKey ? 2 : 0) + (event.ctrlKey ? 4 : 0);
+      return `\x1b[1;${mod}${ARROWS[key]}`;
+    }
+    if (event.ctrlKey && !event.altKey) {
+      if (/^Key[A-Z]$/.test(code)) {
+        // Copy and paste stay the browser's when there is something to copy, or on Ctrl+V.
+        if (code === 'KeyC' && selected()) return undefined;
+        if (code === 'KeyV') return undefined;
+        return String.fromCharCode(code.charCodeAt(3) - 64);
+      }
+      if (CONTROL[code]) return CONTROL[code];
+      return KEYS[key];
+    }
+    if (KEYS[key]) return event.altKey ? `\x1b${KEYS[key]}` : KEYS[key];
+    // Alt is Meta, as in a terminal: Esc and the key, whatever the layout makes of it.
+    if (event.altKey) {
+      if (/^Key[A-Z]$/.test(code)) return `\x1b${event.shiftKey ? code[3] : code[3].toLowerCase()}`;
+      if (/^Digit[0-9]$/.test(code)) return `\x1b${code[5]}`;
+      return key.length === 1 ? `\x1b${key}` : undefined;
+    }
+    // A letter in any layout is itself: the app finds q in й by its place.
+    return [...key].length === 1 ? key : undefined;
+  }
+
+  window.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
+    // Cmd is the browser's: copy, paste, reload, zoom.
+    if (event.metaKey) return;
+    const data = bytes(event);
+    if (data === undefined) return;
+    event.preventDefault();
+    type(data);
+  });
+  // Text from an input method arrives whole once composed.
+  window.addEventListener('compositionend', (event) => { if (event.data) type(event.data); });
+  window.addEventListener('paste', (event) => {
+    const text = event.clipboardData?.getData('text/plain');
+    if (!text) return;
+    event.preventDefault();
+    post('/api/app/input', { data: text, paste: true });
+  });
+
+  // ----- the mouse: a click selects, a double click is Enter, the wheel moves.
+  // Dragging selects text, as in a terminal: that is not a click.
+  function cellAt(event) {
+    const box = screen.getBoundingClientRect();
+    const style = getComputedStyle(screen);
+    const x = Math.floor((event.clientX - box.left - parseFloat(style.paddingLeft)) / cell.width);
+    const y = Math.floor((event.clientY - box.top - parseFloat(style.paddingTop)) / cell.height);
+    return { x: Math.max(0, Math.min(size.width - 1, x)), y: Math.max(0, Math.min(size.height - 1, y)) };
+  }
+  screen.addEventListener('click', (event) => {
+    if (selected()) return;
+    post('/api/app/mouse', { action: 'click', ...cellAt(event) });
+  });
+  screen.addEventListener('dblclick', (event) => {
+    window.getSelection()?.removeAllRanges();
+    post('/api/app/mouse', { action: 'double', ...cellAt(event) });
+  });
+  let turned = 0;
+  screen.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    turned += event.deltaMode === 1 ? event.deltaY * cell.height : event.deltaY;
+    const at = cellAt(event);
+    while (Math.abs(turned) >= 40) {
+      post('/api/app/mouse', { action: turned < 0 ? 'wheel-up' : 'wheel-down', ...at });
+      turned -= Math.sign(turned) * 40;
+    }
+  }, { passive: false });
+
+  if (!token) say(NO_TOKEN);
+  else void watch();
+})();
+</script>
+</body>
+</html>

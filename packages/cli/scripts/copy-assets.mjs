@@ -1,7 +1,9 @@
-// tsc compiles TypeScript only; the dashboard page is a static file next to its server.
+// tsc compiles TypeScript only; the pages are static files next to their server.
 import { copyFileSync, mkdirSync } from 'node:fs';
 
-const from = new URL('../src/ui/dashboard.html', import.meta.url);
-const to = new URL('../dist/ui/dashboard.html', import.meta.url);
-mkdirSync(new URL('.', to), { recursive: true });
-copyFileSync(from, to);
+for (const name of ['dashboard.html', 'app.html']) {
+  const from = new URL(`../src/ui/${name}`, import.meta.url);
+  const to = new URL(`../dist/ui/${name}`, import.meta.url);
+  mkdirSync(new URL('.', to), { recursive: true });
+  copyFileSync(from, to);
+}
