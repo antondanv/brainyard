@@ -41,4 +41,16 @@ jobs:
       # The API goes first: the CLI depends on that exact version. prepack builds each
       # package and copies the README, changelog and licence in. Trusted publishing needs
       # no token and adds provenance; each package has its own trusted publisher on npm.
-      - run: npm publish --workspaces --access public
+      # A version npm already has is skipped: a new package's first one is published by
+      # hand, since npm sets up a trusted publisher only for a package that exists.
+      - name: Publish what npm does not have yet
+        run: |
+          for pkg in packages/brainyard packages/cli; do
+            name=$(node -p "require('./$pkg/package.json').name")
+            version=$(node -p "require('./$pkg/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is on npm already"
+            else
+              npm publish -w "$pkg" --access public
+            fi
+          done

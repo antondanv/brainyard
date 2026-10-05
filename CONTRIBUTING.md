@@ -83,7 +83,10 @@ compiles the API first and the CLI against its `dist/`.
    README with its pictures from that tag.
 
 Publishing the release runs `.github/workflows/publish.yml`: the checks, then `npm publish`
-of both packages, the API first, through trusted publishing, with provenance. A tag that does
+of both packages, the API first, through trusted publishing, with provenance. A version npm
+already has is skipped: a new package's first version is published by hand
+(`npm publish -w packages/<name> --access public`), since npm sets up a trusted publisher only
+for a package that exists. A tag that does
 not match both `package.json` files stops it before anything is published.
 
 ## Commits and pull requests

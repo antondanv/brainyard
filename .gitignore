@@ -10,3 +10,6 @@ coverage/
 packages/*/README.md
 packages/*/CHANGELOG.md
 packages/*/LICENSE
+
+# The task tree is kept locally, not in the repository
+.tree/
