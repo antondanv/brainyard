@@ -14,6 +14,15 @@ All notable changes to this project are documented here. The format follows
   devDependencies. In a pane it is an `unset` in the pane's script, so it works on a tmux server
   that was started with the variable, and a server started by the call does not get it at all.
 
+### Changed
+
+- `open()` and `startPane()` give `system` a real slot where the CLI has one, instead of the first
+  user message: Codex gets `-c developer_instructions=…`, OpenCode gets the system prompt of its
+  `build` and `plan` agents through `OPENCODE_CONFIG_CONTENT` (it replaces OpenCode's own base
+  prompt for them). A `system` without a `prompt` now opens Codex and OpenCode with no first
+  message. Antigravity has no such slot and keeps the instructions in front of its first message.
+  `OpenPlan.env` carries what the plan needs in the CLI's environment.
+
 ## [0.2.0] - 2026-10-05
 
 ### Added

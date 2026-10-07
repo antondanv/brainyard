@@ -326,6 +326,15 @@ await open({ brain: 'claude', cwd: './app', resume: sessionId });
 `stopSession({ brain: 'claude', sessionId, cwd })` останавливает её через `claude stop`;
 разговор остаётся, его можно открыть снова.
 
+`open()` и `startPane()` принимают `system` — постоянные инструкции, которые не попадают в разговор
+там, где у CLI есть для них место: системный промпт Claude Code, `developer_instructions` Codex
+(его собственные инструкции остаются) и системный промпт агентов `build` и `plan` в OpenCode
+(через `OPENCODE_CONFIG_CONTENT`; он заменяет собственный базовый промпт OpenCode у этих
+агентов, а инструменты, `AGENTS.md` и блок окружения остаются). У Antigravity такого места нет:
+его агенты и правила — файлы в `.agents/` или `~/.gemini`, а Brainyard их не пишет, поэтому
+инструкции идут перед первым сообщением. Если есть `system`, но нет `prompt`, Claude Code, Codex
+и OpenCode открываются и ждут вас; Antigravity начинает с инструкций как с первого сообщения.
+
 ### Панели
 
 ```ts

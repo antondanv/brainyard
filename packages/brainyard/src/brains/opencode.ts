@@ -182,6 +182,24 @@ export const opencode: Adapter = {
   },
 };
 
+/**
+ * The environment that gives an interactive OpenCode (its TUI) standing
+ * instructions: the system prompt of the two agents a person works in — `build`,
+ * the default, and `plan` (Tab, or `--agent plan`) — through the same
+ * `OPENCODE_CONFIG_CONTENT` the one-shot answers use, so nothing is written to
+ * the project or the user's config. OpenCode has no flag or message field for
+ * it. The prompt replaces OpenCode's own base prompt for those agents; the
+ * tools, the environment block and AGENTS.md stay. `env` is what the CLI will
+ * inherit: a config it already sets stays, under ours.
+ */
+export function opencodeInstructionsEnv(system: string, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const prompt = system.trim();
+  const config = merge(jsonObject(env.OPENCODE_CONFIG_CONTENT), {
+    agent: { build: { prompt }, plan: { prompt } },
+  });
+  return { OPENCODE_CONFIG_CONTENT: JSON.stringify(config) };
+}
+
 /** The bridge next to this module: compiled in the package, the TypeScript source when run from it. */
 export function bridgePath(): string {
   const compiled = fileURLToPath(new URL('./opencode-bridge.js', import.meta.url));

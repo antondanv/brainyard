@@ -322,6 +322,16 @@ for) or `idle`. Recent Codex versions leave their approval dialogs out of the ro
 `stopSession({ brain: 'claude', sessionId, cwd })` stops it with `claude stop`; the
 conversation stays and can be opened again.
 
+`open()` and `startPane()` take `system`, standing instructions kept out of the conversation
+where the CLI has a slot for them: Claude Code's system prompt, Codex's `developer_instructions`
+(its own instructions stay) and the system prompt of OpenCode's `build` and `plan` agents (set
+through `OPENCODE_CONFIG_CONTENT`; it replaces OpenCode's own base prompt for them, while its
+tools, `AGENTS.md` and environment block stay). Antigravity has no such slot: its agents and
+rules are files under `.agents/` or `~/.gemini`, which Brainyard does not write, so there the
+instructions go in front of the first message. With a `system` and no `prompt`, Claude Code,
+Codex and OpenCode open and wait for you; Antigravity starts with the instructions as its
+first message.
+
 ### Panes
 
 ```ts

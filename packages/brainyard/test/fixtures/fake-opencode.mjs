@@ -69,6 +69,8 @@ if (args[0] !== 'run' && args[0] !== 'serve') {
   }
   if (process.env.FAKE_PANE === '1') {
     console.log(`fake-opencode ready ${JSON.stringify(args)}`);
+    const inline = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT || '{}');
+    console.log(`build-prompt:${inline.agent?.build?.prompt ?? '-'}`);
     await new Promise(() => undefined);
   }
   process.exit(Number(process.env.FAKE_EXIT ?? 0));

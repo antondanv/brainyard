@@ -14,12 +14,18 @@
  *   from the output and asks `claude agents` for the full one.
  * - Codex, Antigravity and OpenCode take neither: after the CLI exits, the
  *   session is found in its store by folder and start time.
+ *
+ * Instructions (`system`) go where the CLI has a slot for them: Claude Code's
+ * system prompt, Codex's `developer_instructions`, the prompt of OpenCode's
+ * agents. Antigravity has none, so it gets them in its first message.
  */
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { toml } from './brains/codex.js';
 import { BRAINS } from './brains/info.js';
+import { opencodeInstructionsEnv } from './brains/opencode.js';
 import { BrainyardError } from './errors.js';
 import { cliFlags } from './flags.js';
 import { commandFor, resolveBrain } from './options.js';
@@ -34,10 +40,22 @@ export interface OpenOptions {
   /** The first message. Without one the CLI opens and waits for you. */
   prompt?: string;
   /**
-   * Standing instructions for the session. Claude Code appends them to its
-   * system prompt, where they stay out of the conversation and survive
-   * resumes; Codex, Antigravity and OpenCode have no such slot, so they get
-   * them in front of the first message.
+   * Standing instructions for the session, kept out of the conversation where
+   * the CLI has a slot for them, so a `system` without a `prompt` opens a chat
+   * that waits for the person:
+   *
+   * - Claude Code appends them to its system prompt, where they survive
+   *   resumes.
+   * - Codex gets them as `developer_instructions` (`-c`): a developer message
+   *   above the conversation, its own instructions kept.
+   * - OpenCode gets them as the system prompt of its `build` and `plan`
+   *   agents (through `OPENCODE_CONFIG_CONTENT`, nothing is written to disk).
+   *   They replace OpenCode's own base prompt for those agents; its tools,
+   *   AGENTS.md and environment block stay.
+   * - Antigravity has no such slot (its agents and rules are files under
+   *   `.agents/` or `~/.gemini`, which Brainyard does not write), so they go
+   *   in front of the first message, in the conversation; without a `prompt`
+   *   that message is the instructions alone.
    */
   system?: string;
   /** Continue this session instead of starting one. */
@@ -85,6 +103,8 @@ export interface OpenPlan {
   cwd: string;
   /** Known before the start (Claude Code, or the session being resumed). */
   sessionId?: string;
+  /** What the CLI needs in its environment on top of the caller's `env` (OpenCode's instructions). */
+  env?: Record<string, string>;
   background: boolean;
   /** Options this CLI cannot honour; nothing is dropped silently. */
   warnings: string[];
@@ -136,6 +156,7 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
   }
 
   let args: string[];
+  let env: Record<string, string> | undefined;
   let sessionId: string | undefined = resume;
   if (brain === 'claude') {
     args = [];
@@ -183,12 +204,13 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
       warnings.push('Codex does not take session names: it titles the session after the first message');
     if (options.model) args.push('-m', options.model);
     if (options.effort) args.push('-c', `model_reasoning_effort=${JSON.stringify(options.effort)}`);
+    // Config, not a message: a developer message above the conversation, Codex's own instructions kept.
+    if (system) args.push('-c', `developer_instructions=${toml(system)}`);
     if (options.permissionMode)
       warnings.push('Codex has no permission modes; use extraArgs for `--sandbox`/`--ask-for-approval`');
     if (options.worktree) warnings.push('Codex does not create worktrees from the command line');
     args.push(...(options.extraArgs ?? []));
-    const first = joinText(system, prompt);
-    if (first) args.push('--', first);
+    if (prompt) args.push('--', prompt);
   } else if (brain === 'antigravity') {
     args = [];
     if (resume) args.push('--conversation', resume);
@@ -232,8 +254,9 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
     if (options.worktree) warnings.push('OpenCode does not create worktrees from the command line');
     args.push(...(options.extraArgs ?? []));
     // `=` binds the value to the flag, dash or not; the TUI sends it at once.
-    const first = joinText(system, prompt);
-    if (first) args.push(`--prompt=${first}`);
+    if (prompt) args.push(`--prompt=${prompt}`);
+    // What the CLI will inherit decides what its own config already holds.
+    if (system) env = opencodeInstructionsEnv(system, applyEnv(process.env, options.env));
   }
 
   const plan: OpenPlan = {
@@ -249,6 +272,7 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
     ),
   };
   if (sessionId) plan.sessionId = sessionId;
+  if (env) plan.env = env;
   return plan;
 }
 
@@ -259,7 +283,8 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
 export async function open(options: OpenOptions): Promise<OpenResult> {
   const plan = await planOpen(options);
   // A session opened from inside another must not pass for its child (see SESSION_VARS).
-  const env = applyEnv(withoutSessionVars(process.env), options.env);
+  // The plan's own variables come last: they were built on top of the caller's.
+  const env = applyEnv(applyEnv(withoutSessionVars(process.env), options.env), plan.env);
   const startedAt = new Date();
   return plan.background ? openBackground(plan, env, startedAt) : openHere(plan, options, env, startedAt);
 }

@@ -244,7 +244,7 @@ export async function startPane(options: PaneOptions, settings: PaneSettings = {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const script = join(dir, `${pane}.sh`);
   // `undefined` removes a variable the server may have kept from whoever started it.
-  const exports = Object.entries(options.env ?? {}).map(([key, value]) => {
+  const exports = Object.entries({ ...options.env, ...plan.env }).map(([key, value]) => {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new BrainyardError('invalid_option', `bad variable name: ${key}`);
     return value === undefined || value === null ? `unset ${key}` : `export ${key}=${shellQuote(value)}`;
   });

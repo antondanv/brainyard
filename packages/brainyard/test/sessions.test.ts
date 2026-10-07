@@ -550,7 +550,7 @@ describe('planOpen', () => {
     expect(bg.background).toBe(true);
   });
 
-  it('Codex: resume subcommand, instructions in front of the prompt, no names', async () => {
+  it('Codex: resume subcommand, instructions as developer_instructions, the prompt alone, no names', async () => {
     const cwd = project();
     const plan = await planOpen({
       brain: 'codex',
@@ -570,13 +570,46 @@ describe('planOpen', () => {
       'gpt-x',
       '-c',
       'model_reasoning_effort="high"',
+      '-c',
+      'developer_instructions="Node k3f9."',
       '--',
-      'Node k3f9.\n\ncontinue',
+      'continue',
     ]);
     expect(plan.warnings.join(' ')).toMatch(/names/);
     await expect(planOpen({ brain: 'codex', cwd, background: true, command: FAKE.codex })).rejects.toThrow(
       /background/,
     );
+  });
+
+  it('Codex: instructions without a prompt are config alone, TOML-quoted, and no first message goes out', async () => {
+    const system = 'Ты работаешь над узлом k3f9: «Медиа-цех».\n\nКритерий: "готово, когда" всё\\хорошо';
+    const plan = await planOpen({ brain: 'codex', cwd: project(), system, command: FAKE.codex });
+    expect(plan.args).toHaveLength(2);
+    expect(plan.args[1]).toBe(
+      'developer_instructions="Ты работаешь над узлом k3f9: «Медиа-цех».\\n\\nКритерий: \\"готово, когда\\" всё\\\\хорошо"',
+    );
+    expect(plan.env).toBeUndefined();
+    const blank = await planOpen({ brain: 'codex', cwd: project(), system: '  ', prompt: ' ', command: FAKE.codex });
+    expect(blank.args).toEqual([]);
+  });
+
+  it('Antigravity has no slot for instructions: they stay in front of the first message', async () => {
+    const both = await planOpen({
+      brain: 'antigravity',
+      cwd: project(),
+      system: 'Node k3f9.',
+      prompt: 'continue',
+      command: FAKE.antigravity,
+    });
+    expect(both.args).toEqual(['--prompt-interactive=Node k3f9.\n\ncontinue']);
+    const alone = await planOpen({
+      brain: 'antigravity',
+      cwd: project(),
+      system: 'Node k3f9.',
+      command: FAKE.antigravity,
+    });
+    expect(alone.args).toEqual(['--prompt-interactive=Node k3f9.']);
+    expect(alone.env).toBeUndefined();
   });
 
   it('Antigravity: conversation, mode and the prompt bound to its flag', async () => {
@@ -603,7 +636,7 @@ describe('planOpen', () => {
     expect(plan.warnings).toEqual([]);
   });
 
-  it('OpenCode: model, plan agent, and instructions with the prompt bound to its flag', async () => {
+  it('OpenCode: model, plan agent, the prompt bound to its flag, instructions in its agents', async () => {
     const plan = await planOpen({
       brain: 'opencode',
       cwd: project(),
@@ -613,15 +646,53 @@ describe('planOpen', () => {
       permissionMode: 'plan',
       command: FAKE.opencode,
     });
-    expect(plan.args).toEqual([
-      '--model',
-      'sber/GigaChat-3-Pro',
-      '--agent',
-      'plan',
-      '--prompt=You work on node k3f9.\n\n---starts with dashes',
-    ]);
+    expect(plan.args).toEqual(['--model', 'sber/GigaChat-3-Pro', '--agent', 'plan', '--prompt=---starts with dashes']);
+    // The instructions are the system prompt of both agents a person works in, and in no message.
+    expect(Object.keys(plan.env ?? {})).toEqual(['OPENCODE_CONFIG_CONTENT']);
+    expect(JSON.parse(plan.env?.OPENCODE_CONFIG_CONTENT ?? '')).toEqual({
+      agent: { build: { prompt: 'You work on node k3f9.' }, plan: { prompt: 'You work on node k3f9.' } },
+    });
     expect(plan.sessionId).toBeUndefined();
     expect(plan.warnings).toEqual([]);
+  });
+
+  it('OpenCode: instructions alone send no message, and keep the config the caller already has', async () => {
+    const saved = process.env.OPENCODE_CONFIG_CONTENT;
+    process.env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ model: 'a/b', agent: { build: { description: 'mine' } } });
+    try {
+      const plan = await planOpen({
+        brain: 'opencode',
+        cwd: project(),
+        system: ' Node k3f9. ',
+        command: FAKE.opencode,
+      });
+      expect(plan.args).toEqual([]);
+      expect(JSON.parse(plan.env?.OPENCODE_CONFIG_CONTENT ?? '')).toEqual({
+        model: 'a/b',
+        agent: { build: { description: 'mine', prompt: 'Node k3f9.' }, plan: { prompt: 'Node k3f9.' } },
+      });
+      // What `env` gives the CLI instead of the inherited config is what is built on.
+      const own = await planOpen({
+        brain: 'opencode',
+        cwd: project(),
+        system: 'Node k3f9.',
+        env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ model: 'c/d' }) },
+        command: FAKE.opencode,
+      });
+      expect(JSON.parse(own.env?.OPENCODE_CONFIG_CONTENT ?? '')).toMatchObject({ model: 'c/d' });
+      const none = await planOpen({
+        brain: 'opencode',
+        cwd: project(),
+        system: 'Node k3f9.',
+        env: { OPENCODE_CONFIG_CONTENT: undefined },
+        command: FAKE.opencode,
+      });
+      expect(JSON.parse(none.env?.OPENCODE_CONFIG_CONTENT ?? '')).not.toHaveProperty('model');
+      expect((await planOpen({ brain: 'opencode', cwd: project(), command: FAKE.opencode })).env).toBeUndefined();
+    } finally {
+      if (saved === undefined) delete process.env.OPENCODE_CONFIG_CONTENT;
+      else process.env.OPENCODE_CONFIG_CONTENT = saved;
+    }
   });
 
   it('OpenCode: resume, bypassPermissions as --auto, and what it cannot do said out loud', async () => {
@@ -806,6 +877,32 @@ describe('open', () => {
     expect(calls.read()).toMatchObject({ argv: ['--prompt=Собери сайт'], env: { PWD: cwd } });
     const [found] = await sessions({ cwd, brains: ['opencode'], homes: { opencode: home }, live: false });
     expect(found).toMatchObject({ id: 'ses_fromTui', title: 'Собери сайт', titleSource: 'prompt' });
+  });
+
+  it('OpenCode: the instructions reach the TUI in its environment, not as a message', async () => {
+    const calls = recording();
+    await open({
+      brain: 'opencode',
+      cwd: project(),
+      system: 'You work on node k3f9.',
+      command: FAKE.opencode,
+      env: { FAKE_RECORD: calls.path },
+    });
+    const call = calls.read();
+    expect(call.argv).toEqual([]);
+    expect(JSON.parse(call.env.OPENCODE_CONFIG_CONTENT ?? '').agent.build.prompt).toBe('You work on node k3f9.');
+  });
+
+  it('Codex: the instructions are in the arguments of the CLI that opens, and it waits for the person', async () => {
+    const calls = recording();
+    await open({
+      brain: 'codex',
+      cwd: project(),
+      system: 'You work on node k3f9.',
+      command: FAKE.codex,
+      env: { FAKE_RECORD: calls.path },
+    });
+    expect(calls.read().argv).toEqual(['-c', 'developer_instructions="You work on node k3f9."']);
   });
 
   it('says so when the store has no trace of the session', async () => {

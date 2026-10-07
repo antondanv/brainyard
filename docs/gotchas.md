@@ -65,6 +65,29 @@ root/sudo privileges`.
 
 **Brainyard.** Sets `IS_SANDBOX=1` for `access: 'full'` when running as root, and only then.
 
+### Only Claude Code takes instructions by flag
+
+**Symptom.** An interactive session opened with standing instructions and no first message
+started with the instructions as the first user message: the agent answered them at once, and
+they sat in the conversation, in the title and in the history.
+
+**Cause.** Codex, Antigravity and OpenCode have no `--system-prompt` flag. Claude Code has
+`--append-system-prompt`.
+
+**Brainyard.** Looks for the slot each CLI does have (checked against Codex 0.160.0, OpenCode
+1.18.34 and Antigravity 1.3.0 without starting a session):
+- Codex: `-c developer_instructions="…"` is config, parsed as TOML, and arrives as a
+  developer message above the conversation (`codex debug prompt-input` shows it first in the
+  model's input). Codex's own instructions stay; `base_instructions` would replace them.
+- OpenCode: no flag, but an agent's `prompt` can come from `OPENCODE_CONFIG_CONTENT` — the
+  mechanism `ask()` uses. The TUI's two agents, `build` and `plan`, get it
+  (`opencode debug agent build` shows it). It replaces OpenCode's base prompt for them; the
+  tools, `AGENTS.md` and the environment block stay. Nothing is written to disk.
+- Antigravity: nothing inline. Custom agents are `agent.md` files and rules are `AGENTS.md`,
+  `GEMINI.md` or `.agents/rules/*.md`, in the project or `~/.gemini`; no flag or `AGY_*`
+  variable carries text. Brainyard writes no files into a project, so the instructions stay in
+  front of the first message.
+
 ### New flags break old versions
 
 **Symptom.** `error: unknown option '--safe-mode'` on a machine with an older CLI.

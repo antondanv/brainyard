@@ -195,6 +195,26 @@ describe.skipIf(!hasTmux)('panes (real tmux)', () => {
     await closePane(started.pane, settings);
   });
 
+  it('OpenCode gets instructions in its environment, whatever quotes they hold, and no message', async () => {
+    const started = await startPane(
+      {
+        brain: 'opencode',
+        cwd: tempDir(),
+        command: FAKE.opencode,
+        system: `Node k3f9's "goal"; $HOME`,
+        env: { FAKE_PANE: '1' },
+      },
+      settings,
+    );
+    const screen = await until(
+      () => capturePane(started.pane, settings),
+      (s) => Boolean(s && text(s.lines).includes('build-prompt:')),
+    );
+    expect(text(screen!.lines)).toContain('fake-opencode ready []');
+    expect(text(screen!.lines)).toContain(`build-prompt:Node k3f9's "goal"; $HOME`);
+    await closePane(started.pane, settings);
+  });
+
   it('a server started from inside Claude Code does not pass that session on to panes', () => {
     // An old server remembers the environment of whoever started it.
     const dirty = `${socket}-dirty`;
