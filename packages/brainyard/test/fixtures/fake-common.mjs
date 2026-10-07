@@ -9,6 +9,7 @@ export function recorder(args) {
     stdin: [],
     env: {
       IS_SANDBOX: process.env.IS_SANDBOX ?? null,
+      NODE_ENV: process.env.NODE_ENV ?? null,
       FAKE_EXTRA: process.env.FAKE_EXTRA ?? null,
       CLAUDE_CODE_CHILD_SESSION: process.env.CLAUDE_CODE_CHILD_SESSION ?? null,
       CLAUDE_CODE_SESSION_ID: process.env.CLAUDE_CODE_SESSION_ID ?? null,

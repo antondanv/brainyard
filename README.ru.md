@@ -416,7 +416,8 @@ const limitsOnly = await usage({ limit: 0 }); // окна аккаунта, бе
 | `steerable` | где поддерживается | Держать stdin открытым для `hint()` |
 | `nudge` | `true` | Ход, кончившийся без текста, получает одно продолжение в том же разговоре |
 | `timeoutMs` | нет | Прогон, убитый на середине, оплачен целиком, поэтому потолка по умолчанию нет |
-| `signal`, `onEvent`, `env`, `extraArgs`, `command`, `prices`, `includeRaw` | | |
+| `env` | | Дополнительное окружение для CLI. Значение `undefined` (или `null`) убирает переменную, которую CLI унаследовал бы: `env: { NODE_ENV: undefined }` не пускает `NODE_ENV=production` программы-хозяина к агенту, где `npm install` пропустил бы devDependencies. То же у `open()` и `startPane()` (в панели это `unset` в оболочке панели) |
+| `signal`, `onEvent`, `extraArgs`, `command`, `prices`, `includeRaw` | | |
 
 #### Уровни доступа
 

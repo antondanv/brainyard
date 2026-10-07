@@ -23,9 +23,9 @@ import { BRAINS } from './brains/info.js';
 import { BrainyardError } from './errors.js';
 import { cliFlags } from './flags.js';
 import { commandFor, resolveBrain } from './options.js';
-import { type Command, capture, describeCommand, spawnInteractive, withoutSessionVars } from './process.js';
+import { applyEnv, type Command, capture, describeCommand, spawnInteractive, withoutSessionVars } from './process.js';
 import { liveSessions, type SessionInfo, type SessionsOptions, sessions } from './sessions.js';
-import type { BrainId, RunError } from './types.js';
+import type { BrainId, EnvOverrides, RunError } from './types.js';
 
 export interface OpenOptions {
   brain: BrainId | string;
@@ -60,7 +60,15 @@ export interface OpenOptions {
   worktree?: boolean | string;
   /** Claude Code: start in the background and return at once (`--bg`). */
   background?: boolean;
-  env?: Record<string, string>;
+  /**
+   * Extra environment for the CLI. A variable set to `undefined` (or `null`)
+   * is removed from the one it inherits: a host that runs with
+   * `NODE_ENV=production` passes `{ NODE_ENV: undefined }` so that `npm
+   * install` in the session still installs devDependencies. In a pane the
+   * removal reaches the pane's shell too (`unset`), even on a tmux server
+   * that was started with the variable.
+   */
+  env?: EnvOverrides;
   /** Raw arguments added before the prompt. */
   extraArgs?: string[];
   /** Executable to run instead of the default, as in `run()`. */
@@ -251,7 +259,7 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
 export async function open(options: OpenOptions): Promise<OpenResult> {
   const plan = await planOpen(options);
   // A session opened from inside another must not pass for its child (see SESSION_VARS).
-  const env = { ...withoutSessionVars(process.env), ...options.env };
+  const env = applyEnv(withoutSessionVars(process.env), options.env);
   const startedAt = new Date();
   return plan.background ? openBackground(plan, env, startedAt) : openHere(plan, options, env, startedAt);
 }
@@ -366,7 +374,7 @@ export async function findStarted(
     brains: [brain],
     headless: true,
     live: false,
-    env: { ...process.env, ...options.env },
+    env: applyEnv(process.env, options.env),
     ...(options.homes ? { homes: options.homes } : {}),
   });
   const fresh = list.filter((session) => Date.parse(session.startedAt ?? session.updatedAt ?? '') >= from);

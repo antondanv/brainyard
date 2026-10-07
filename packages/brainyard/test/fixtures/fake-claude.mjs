@@ -47,6 +47,7 @@ if (!args.includes('-p') && args[0] !== 'auth') {
       'CLAUDE_PID',
     ].filter((name) => process.env[name] !== undefined);
     console.log(`inherited:${inherited.join(',') || 'none'} keep:${process.env.CLAUDE_CODE_USE_BEDROCK ?? '-'}`);
+    console.log(`node-env:${process.env.NODE_ENV ?? '-'}`);
     console.log(`\u001b[31mred\u001b[0m and plain`);
     process.stdin.setRawMode?.(true);
     process.stdin.setEncoding('utf8');

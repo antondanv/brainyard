@@ -14,7 +14,7 @@ import { ADAPTERS } from './brains/index.js';
 import { BRAINS } from './brains/info.js';
 import { BrainyardError } from './errors.js';
 import { commandFor } from './options.js';
-import { capture } from './process.js';
+import { applyEnv, capture } from './process.js';
 import { startAnswer } from './run.js';
 import type { AskOptions, AskResult, BrainId } from './types.js';
 import { BRAIN_IDS } from './types.js';
@@ -83,7 +83,7 @@ async function forget(brain: BrainId, sessionId: string | undefined, options: As
   try {
     await capture(commandFor(brain, options.command), args, {
       timeoutMs: 15_000,
-      env: { ...process.env, ...options.env },
+      env: applyEnv(process.env, options.env),
     });
   } catch {
     // Not installed any more, or gone already: nothing to clean.

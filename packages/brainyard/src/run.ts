@@ -13,7 +13,7 @@ import { estimateCost } from './cost.js';
 import { BrainyardError, classifyFailure } from './errors.js';
 import { clip, oneLine } from './humanize.js';
 import { type Mode, type Resolved, resolveBrain, resolveLaunch } from './options.js';
-import { spawnCommand, terminate } from './process.js';
+import { applyEnv, spawnCommand, terminate } from './process.js';
 import { redact } from './redact.js';
 import { EventStream } from './stream.js';
 import type { AgentEvent, BrainId, RunError, RunOptions, RunResult } from './types.js';
@@ -187,7 +187,7 @@ class Run implements AgentRun {
         : resolved.command;
       child = spawnCommand(command, plan.args, {
         cwd: launch.cwd,
-        env: { ...process.env, ...plan.env, ...(this.#options.env ?? {}) },
+        env: applyEnv({ ...process.env, ...plan.env }, this.#options.env),
         stdin: 'pipe',
       });
     } catch (cause) {

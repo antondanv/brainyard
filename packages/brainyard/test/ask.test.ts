@@ -52,6 +52,24 @@ describe('ask()', () => {
   });
 });
 
+describe('ask() with an inherited variable removed', () => {
+  it('a variable the caller sets to undefined is not passed to the CLI', async () => {
+    const saved = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const calls = recording();
+      await ask('claude', 'hi', {
+        command: FAKE.claude,
+        env: { FAKE_SCENARIO: 'ok', FAKE_RECORD: calls.path, NODE_ENV: undefined },
+      });
+      expect(calls.read().env.NODE_ENV).toBeNull();
+    } finally {
+      if (saved === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = saved;
+    }
+  });
+});
+
 describe('ask() with OpenCode', () => {
   it('answers as an agent of its own: its instructions, no tools, no CLAUDE.md', async () => {
     clearFlagCache();

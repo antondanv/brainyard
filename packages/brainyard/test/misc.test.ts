@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { estimateCost } from '../src/cost.js';
 import { resolveLaunch } from '../src/options.js';
-import { withoutSessionVars } from '../src/process.js';
+import { applyEnv, removals, withoutSessionVars } from '../src/process.js';
 import { EventStream } from '../src/stream.js';
 import { FAKE, tempDir } from './helpers.js';
 
@@ -130,5 +130,22 @@ describe('withoutSessionVars', () => {
 
   it('keeps an effort a person set in a plain shell', () => {
     expect(withoutSessionVars({ CLAUDE_EFFORT: 'high' })).toEqual({ CLAUDE_EFFORT: 'high' });
+  });
+});
+
+describe('applyEnv', () => {
+  it('sets a string and removes what the caller sets to undefined or null', () => {
+    const base = { PATH: '/bin', NODE_ENV: 'production', KEEP: '1', GONE: 'x' };
+    const out = applyEnv(base, { NODE_ENV: undefined, GONE: null, NEW: 'y', KEEP: '2' });
+    expect(out).toEqual({ PATH: '/bin', KEEP: '2', NEW: 'y' });
+    expect('NODE_ENV' in out).toBe(false);
+    expect(base.NODE_ENV).toBe('production');
+    expect(applyEnv(base, undefined)).toEqual(base);
+  });
+
+  it('knows which variables a caller asks to remove', () => {
+    expect(removals({ A: 'a', B: undefined, C: null })).toEqual({ B: undefined, C: undefined });
+    expect(Object.keys(removals({ A: 'a', B: undefined, C: null }))).toEqual(['B', 'C']);
+    expect(removals(undefined)).toEqual({});
   });
 });

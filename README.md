@@ -410,7 +410,8 @@ each CLI can do.
 | `steerable` | where supported | Keep stdin open for `hint()` |
 | `nudge` | `true` | A turn that ends without text gets one follow-up in the same conversation |
 | `timeoutMs` | none | A run killed halfway is paid for in full, so there is no default limit |
-| `signal`, `onEvent`, `env`, `extraArgs`, `command`, `prices`, `includeRaw` | | |
+| `env` | | Extra environment for the CLI. A value of `undefined` (or `null`) removes the variable the CLI would inherit: `env: { NODE_ENV: undefined }` keeps a host's `NODE_ENV=production` from reaching the agent, where `npm install` would skip devDependencies. The same for `open()` and `startPane()` (in a pane it is an `unset` in the pane's shell) |
+| `signal`, `onEvent`, `extraArgs`, `command`, `prices`, `includeRaw` | | |
 
 #### Access levels
 

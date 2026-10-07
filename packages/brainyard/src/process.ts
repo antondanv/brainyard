@@ -8,6 +8,8 @@ import { accessSync, constants, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, extname, isAbsolute, join, normalize, resolve } from 'node:path';
 
+import type { EnvOverrides } from './types.js';
+
 const WINDOWS = process.platform === 'win32';
 
 // Where installers put the CLIs when a GUI or a service starts us with a
@@ -86,6 +88,35 @@ export function withoutSessionVars(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     }
   }
   return out;
+}
+
+/**
+ * `base` with a caller's changes on top: a string sets the variable, `undefined`
+ * or `null` removes it (what a host program leaked into its own environment,
+ * such as `NODE_ENV=production`, must not reach the CLI). Windows names are
+ * case-insensitive, and a copy of `process.env` is a plain object there.
+ */
+export function applyEnv(base: NodeJS.ProcessEnv, changes: EnvOverrides | undefined): NodeJS.ProcessEnv {
+  const out = { ...base };
+  for (const [name, value] of Object.entries(changes ?? {})) {
+    if (value === undefined || value === null) {
+      for (const key of Object.keys(out)) if (sameName(key, name)) delete out[key];
+    } else out[name] = value;
+  }
+  return out;
+}
+
+/** Only the removals of `changes`: what a server that is about to start must not inherit. */
+export function removals(changes: EnvOverrides | undefined): EnvOverrides {
+  return Object.fromEntries(
+    Object.entries(changes ?? {})
+      .filter(([, value]) => value === undefined || value === null)
+      .map(([name]) => [name, undefined]),
+  );
+}
+
+function sameName(a: string, b: string): boolean {
+  return WINDOWS ? a.toUpperCase() === b.toUpperCase() : a === b;
 }
 
 /** The same in `sh`, for a shell whose environment we do not control (a tmux server started long ago). */

@@ -26,8 +26,10 @@ import { join } from 'node:path';
 import { BrainyardError } from './errors.js';
 import { findStarted, type OpenOptions, planOpen } from './open.js';
 import {
+  applyEnv,
   type Command,
   capture,
+  removals,
   resolveCommand,
   spawnInteractive,
   unsetSessionVarsScript,
@@ -130,7 +132,7 @@ interface Tmux {
 function tmux(settings: PaneSettings = {}): Tmux | undefined {
   if (process.platform === 'win32') return undefined;
   // The server keeps the environment of whoever started it, for every pane to come.
-  const env = withoutSessionVars({ ...process.env, ...settings.env });
+  const env = withoutSessionVars(applyEnv(process.env, settings.env));
   for (const name of NESTING) delete env[name];
   const command = resolveCommand(settings.command, 'tmux', 'BRAINYARD_TMUX_BIN', env);
   if (!command) return undefined;
@@ -150,8 +152,12 @@ function need(settings: PaneSettings = {}): Tmux {
   return found;
 }
 
-async function call(t: Tmux, args: string[]): Promise<{ ok: boolean; out: string; err: string }> {
-  const got = await capture(t.command, ['-L', t.socket, '-f', '/dev/null', ...args], { env: t.env, timeoutMs: 10_000 });
+async function call(
+  t: Tmux,
+  args: string[],
+  env: NodeJS.ProcessEnv = t.env,
+): Promise<{ ok: boolean; out: string; err: string }> {
+  const got = await capture(t.command, ['-L', t.socket, '-f', '/dev/null', ...args], { env, timeoutMs: 10_000 });
   return { ok: got.code === 0 && !got.error, out: got.stdout, err: (got.stderr || got.error?.message || '').trim() };
 }
 
@@ -237,9 +243,10 @@ export async function startPane(options: PaneOptions, settings: PaneSettings = {
   const dir = join(tmpdir(), `brainyard-panes-${process.getuid?.() ?? 'user'}`);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const script = join(dir, `${pane}.sh`);
+  // `undefined` removes a variable the server may have kept from whoever started it.
   const exports = Object.entries(options.env ?? {}).map(([key, value]) => {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new BrainyardError('invalid_option', `bad variable name: ${key}`);
-    return `export ${key}=${shellQuote(value)}`;
+    return value === undefined || value === null ? `unset ${key}` : `export ${key}=${shellQuote(value)}`;
   });
   writeFileSync(
     script,
@@ -296,7 +303,8 @@ export async function startPane(options: PaneOptions, settings: PaneSettings = {
     'C-q',
     'detach-client',
   );
-  const got = await call(t, args);
+  // A server started by this very call keeps its environment for every pane to come: the removed variables stay out of it.
+  const got = await call(t, args, applyEnv(t.env, removals(options.env)));
   if (!got.ok) throw new BrainyardError('failed', `tmux did not start the pane: ${got.err || 'no reason given'}`);
   await copyToClipboard(t);
   const result: PaneStart = {

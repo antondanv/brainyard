@@ -271,6 +271,31 @@ describe('run() with Claude Code', () => {
   });
 });
 
+describe('run() with an inherited variable removed', () => {
+  it('a variable the caller sets to undefined is not passed to the CLI', async () => {
+    const saved = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const seen: (string | null)[] = [];
+      for (const env of [{}, { NODE_ENV: undefined }, { NODE_ENV: null }]) {
+        const calls = recording();
+        await run({
+          brain: 'claude',
+          prompt: 'go',
+          cwd: tempDir(),
+          command: FAKE.claude,
+          env: { FAKE_SCENARIO: 'ok', FAKE_RECORD: calls.path, ...env },
+        });
+        seen.push(calls.read().env.NODE_ENV ?? null);
+      }
+      expect(seen).toEqual(['production', null, null]);
+    } finally {
+      if (saved === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = saved;
+    }
+  });
+});
+
 describe('run() with Codex', () => {
   it('reads the prompt from stdin and translates its items', async () => {
     const cwd = tempDir();

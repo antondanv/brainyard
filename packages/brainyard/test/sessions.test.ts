@@ -695,6 +695,30 @@ describe('open', () => {
     }
   });
 
+  it('a variable the caller sets to undefined (or null) is not passed to the CLI', async () => {
+    // NODE_ENV=production is the host's own, and would make `npm install` skip devDependencies.
+    const saved = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const inherited = recording();
+      await open({ brain: 'claude', cwd: project(), command: FAKE.claude, env: { FAKE_RECORD: inherited.path } });
+      expect(inherited.read().env.NODE_ENV).toBe('production');
+      for (const gone of [undefined, null]) {
+        const rec = recording();
+        await open({
+          brain: 'claude',
+          cwd: project(),
+          command: FAKE.claude,
+          env: { FAKE_RECORD: rec.path, NODE_ENV: gone, FAKE_EXTRA: 'set' },
+        });
+        expect(rec.read().env).toMatchObject({ NODE_ENV: null, FAKE_EXTRA: 'set' });
+      }
+    } finally {
+      if (saved === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = saved;
+    }
+  });
+
   it('reports a non-zero exit', async () => {
     const result = await open({ brain: 'claude', cwd: project(), command: FAKE.claude, env: { FAKE_EXIT: '3' } });
     expect(result).toMatchObject({ ok: false, exitCode: 3 });

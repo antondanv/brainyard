@@ -224,6 +224,50 @@ describe.skipIf(!hasTmux)('panes (real tmux)', () => {
     })();
   });
 
+  it('a variable set to undefined is unset in the pane, even on a server that was started with it', async () => {
+    const dirty = `${socket}-env`;
+    const env = { ...process.env, NODE_ENV: 'production' } as NodeJS.ProcessEnv;
+    delete env.TMUX;
+    spawnSync('tmux', ['-L', dirty, '-f', '/dev/null', 'new-session', '-d', '-s', 'keep', 'sleep 30'], { env });
+    try {
+      const shown = async (change: Record<string, string | undefined>) => {
+        const started = await startPane(
+          { brain: 'claude', cwd: tempDir(), command: FAKE.claude, env: { FAKE_PANE: '1', ...change } },
+          { socket: dirty },
+        );
+        const screen = await until(
+          () => capturePane(started.pane, { socket: dirty }),
+          (s) => Boolean(s && text(s.lines).includes('node-env:')),
+        );
+        return /node-env:(\S+)/.exec(text(screen!.lines))?.[1];
+      };
+      expect(await shown({})).toBe('production');
+      expect(await shown({ NODE_ENV: undefined })).toBe('-');
+      expect(await shown({ NODE_ENV: 'development' })).toBe('development');
+    } finally {
+      spawnSync('tmux', ['-L', dirty, 'kill-server']);
+    }
+  });
+
+  it('a variable set to undefined stays out of the environment of the server the pane starts', async () => {
+    const fresh = `${socket}-fresh`;
+    const saved = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await startPane(
+        { brain: 'claude', cwd: tempDir(), command: FAKE.claude, env: { FAKE_PANE: '1', NODE_ENV: undefined } },
+        { socket: fresh },
+      );
+      const global = spawnSync('tmux', ['-L', fresh, '-f', '/dev/null', 'show-environment', '-g']).stdout.toString();
+      expect(global).toContain('PATH=');
+      expect(global).not.toMatch(/^NODE_ENV=/m);
+    } finally {
+      spawnSync('tmux', ['-L', fresh, 'kill-server']);
+      if (saved === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = saved;
+    }
+  });
+
   it('text selected in a pane goes to the clipboard command, as a mouse selection does', async () => {
     const copied = join(tempDir(), 'copied.txt');
     const started = await startPane(

@@ -25,6 +25,14 @@ export const EFFORT_ORDER: readonly Effort[] = ['none', 'minimal', 'low', 'mediu
  */
 export type Access = 'full' | 'workspace' | 'readonly';
 
+/**
+ * Environment for a CLI process, on top of the one this program has: a string
+ * sets the variable, `undefined` (or `null`, for JSON) removes an inherited
+ * one. A host program often sets variables for itself that no agent should
+ * see: `NODE_ENV=production` makes `npm install` skip devDependencies.
+ */
+export type EnvOverrides = Record<string, string | null | undefined>;
+
 /** A stdio MCP server, in the shape every CLI can be taught to load. */
 export interface McpServer {
   command: string;
@@ -198,8 +206,8 @@ export interface RunOptions {
   /** Let the agent run shell commands. Defaults to true. */
   shell?: boolean;
   mcpServers?: Record<string, McpServer>;
-  /** Extra environment for the CLI process. */
-  env?: Record<string, string>;
+  /** Extra environment for the CLI process; a variable set to `undefined` is removed from the inherited one. */
+  env?: EnvOverrides;
   /** Raw arguments appended to the CLI call. You know which CLI you are talking to. */
   extraArgs?: string[];
   /** Executable to run instead of the default (`claude`, `codex`, `agy`, `opencode`); an array adds leading arguments. */
@@ -240,7 +248,8 @@ export interface AskOptions {
   access?: Access;
   /** Defaults to a fresh empty directory, removed afterwards. */
   cwd?: string;
-  env?: Record<string, string>;
+  /** Extra environment for the CLI process; a variable set to `undefined` is removed from the inherited one. */
+  env?: EnvOverrides;
   command?: string | string[];
   timeoutMs?: number;
   signal?: AbortSignal;

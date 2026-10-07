@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `env` of `run()`, `ask()`, `open()` and `startPane()` can remove an inherited variable: a value
+  of `undefined` (or `null`) drops it from the environment of the CLI (`EnvOverrides`). A host that
+  runs with `NODE_ENV=production` no longer passes it on to every agent, where `npm install` skips
+  devDependencies. In a pane it is an `unset` in the pane's script, so it works on a tmux server
+  that was started with the variable, and a server started by the call does not get it at all.
+
 ## [0.2.0] - 2026-10-05
 
 ### Added
@@ -132,5 +142,6 @@ First public release.
   token-guarded HTTP API with server-sent events.
 - Tests against fake CLIs, and `npm run live` for checks against the real ones.
 
+[Unreleased]: https://github.com/antondanv/brainyard/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/antondanv/brainyard/releases/tag/v0.2.0
 [0.1.0]: https://github.com/antondanv/brainyard/releases/tag/v0.1.0
