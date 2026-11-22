@@ -550,6 +550,48 @@ describe('planOpen', () => {
     expect(bg.background).toBe(true);
   });
 
+  it('Claude Code in the background: the env goes to the session as its own settings, values out of the log', async () => {
+    const cwd = project();
+    const bg = await planOpen({
+      brain: 'claude',
+      cwd,
+      prompt: 'go',
+      background: true,
+      env: { TREEYARD_NODE: 'k3f9', NODE_ENV: undefined },
+      command: FAKE.claude,
+    });
+    // The background service keeps the environment of the launch that started it; a later
+    // session sees its own values only through its settings. A removal cannot be said there.
+    expect(bg.args).toEqual(['--settings', '{"env":{"TREEYARD_NODE":"k3f9"}}', '--bg', '--', 'go']);
+    expect(bg.display).toContain('TREEYARD_NODE');
+    expect(bg.display).not.toContain('k3f9');
+    expect(bg.warnings).toEqual([]);
+
+    const resumed = await planOpen({
+      brain: 'claude',
+      cwd,
+      resume: 'abc',
+      background: true,
+      env: { A: '1' },
+      command: FAKE.claude,
+    });
+    expect(resumed.args).toEqual(['--resume', 'abc', '--settings', '{"env":{"A":"1"}}', '--bg']);
+
+    const own = await planOpen({
+      brain: 'claude',
+      cwd,
+      background: true,
+      env: { A: '1' },
+      extraArgs: ['--settings', '{}'],
+      command: FAKE.claude,
+    });
+    expect(own.args).toEqual(['--bg', '--settings', '{}']);
+    expect(own.warnings).toEqual([expect.stringMatching(/own --settings/)]);
+
+    const here = await planOpen({ brain: 'claude', cwd, env: { A: '1' }, command: FAKE.claude });
+    expect(here.args).not.toContain('--settings');
+  });
+
   it('Codex: resume subcommand, instructions as developer_instructions, the prompt alone, no names', async () => {
     const cwd = project();
     const plan = await planOpen({

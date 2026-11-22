@@ -85,6 +85,13 @@ export interface OpenOptions {
    * install` in the session still installs devDependencies. In a pane the
    * removal reaches the pane's shell too (`unset`), even on a tmux server
    * that was started with the variable.
+   *
+   * Claude Code in the background starts every session from one service that
+   * keeps the environment of the launch that started it, so the variables set
+   * here also go to the session as its own settings (`--settings`): each
+   * background session sees its own values. They are on its command line
+   * there, where `ps` shows them — keep secrets out. A removal reaches a
+   * background session only when its launch starts the service.
    */
   env?: EnvOverrides;
   /** Raw arguments added before the prompt. */
@@ -194,7 +201,18 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
       args.push('--worktree');
       if (typeof options.worktree === 'string' && options.worktree.trim()) args.push(options.worktree.trim());
     }
-    if (options.background) args.push('--bg');
+    if (options.background) {
+      const vars = Object.entries(options.env ?? {}).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      );
+      if (vars.length && (options.extraArgs ?? []).includes('--settings'))
+        warnings.push(
+          'extraArgs has its own --settings: env reaches the background session only when this launch starts the background service',
+        );
+      // The background service keeps the environment it started with; a session's own settings carry this launch's.
+      else if (vars.length) args.push('--settings', JSON.stringify({ env: Object.fromEntries(vars) }));
+      args.push('--bg');
+    }
     args.push(...(options.extraArgs ?? []));
     // After `--` a prompt that starts with a dash is still a prompt.
     if (first) args.push('--', first);
@@ -268,7 +286,14 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
     warnings,
     display: describeCommand(
       command,
-      args.map((arg) => (arg.length > 80 ? `${arg.slice(0, 77)}…` : arg)),
+      args.map((arg, i) =>
+        // The values of the environment stay out of logs; their names are enough.
+        args[i - 1] === '--settings' && options.background
+          ? settingsShape(arg)
+          : arg.length > 80
+            ? `${arg.slice(0, 77)}…`
+            : arg,
+      ),
     ),
   };
   if (sessionId) plan.sessionId = sessionId;
@@ -410,4 +435,16 @@ export async function findStarted(
 function joinText(system: string | undefined, prompt: string | undefined): string | undefined {
   if (system && prompt) return `${system}\n\n${prompt}`;
   return system ?? prompt;
+}
+
+/** `{"env":{"A":"secret"}}` → `{"env":{"A":…}}`: what a background session gets, without the values. */
+function settingsShape(json: string): string {
+  try {
+    const env = (JSON.parse(json) as { env?: Record<string, string> }).env ?? {};
+    return `{"env":{${Object.keys(env)
+      .map((key) => `${JSON.stringify(key)}:…`)
+      .join(',')}}}`;
+  } catch {
+    return '{…}';
+  }
 }

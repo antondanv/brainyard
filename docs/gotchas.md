@@ -434,3 +434,9 @@ its desktop app.
   desktop app. `opencode run` gives a session rules that keep questions out
   (`plan_exit: deny`), the TUI none: that is how headless runs are told apart. Until a title is
   generated a session is called `New session - <time>`, and the first prompt says more.
+- **Claude Code** starts every background session (`--bg`) from one service (`claude daemon
+  run`) that keeps the environment of the launch that started it: the sessions after it inherit
+  that one, not the environment of their own call — a variable that names a session's task came
+  out the same in all of them. Settings reach the session itself: `--settings '{"env": …}'`.
+  `open({ background: true, env })` passes the string values of `env` that way (checked on
+  2.1.330); they are on the session's command line, where `ps` shows them.

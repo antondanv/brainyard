@@ -321,6 +321,9 @@ for) or `idle`. Recent Codex versions leave their approval dialogs out of the ro
 `open({ background: true })` starts a Claude Code background session, and
 `stopSession({ brain: 'claude', sessionId, cwd })` stops it with `claude stop`; the
 conversation stays and can be opened again.
+Each background session gets the `env` of its own call, even when Claude Code's background
+service was started by an earlier one: Brainyard hands the values to the session as its settings,
+where `ps` shows them — keep secrets out of it.
 
 `open()` and `startPane()` take `system`, standing instructions kept out of the conversation
 where the CLI has a slot for them: Claude Code's system prompt, Codex's `developer_instructions`

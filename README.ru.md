@@ -325,6 +325,9 @@ await open({ brain: 'claude', cwd: './app', resume: sessionId });
 `open({ background: true })` запускает фоновую сессию Claude Code, а
 `stopSession({ brain: 'claude', sessionId, cwd })` останавливает её через `claude stop`;
 разговор остаётся, его можно открыть снова.
+Каждая фоновая сессия получает `env` своего вызова, даже если фоновую службу Claude Code
+запустил предыдущий: Brainyard передаёт значения сессии её настройками, где их видно в `ps`, —
+секреты туда не клади.
 
 `open()` и `startPane()` принимают `system` — постоянные инструкции, которые не попадают в разговор
 там, где у CLI есть для них место: системный промпт Claude Code, `developer_instructions` Codex

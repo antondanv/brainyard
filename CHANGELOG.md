@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- `open({ background: true, env })` gave a Claude Code background session the environment of the
+  first background launch, not its own: Claude Code starts every background session from one
+  service, which keeps the environment it was started with. The string values of `env` now also
+  go to the session as its own settings (`--settings '{"env": …}'`), so each session sees its own;
+  the log line (`display`) names the variables without their values. A removal (`undefined`)
+  reaches a background session only when its launch starts the service.
+
 ## [0.3.0] - 2026-10-07
 
 ### Added
