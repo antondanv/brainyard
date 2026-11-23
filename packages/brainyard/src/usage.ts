@@ -23,7 +23,7 @@ import {
   type SessionInfo,
   sessions,
 } from './sessions.js';
-import { agyLimits, claudeCachedLimits, opencodeLimits } from './subscription-limits.js';
+import { agyLimits, claudeCachedLimits, claudeFreshLimits, opencodeLimits } from './subscription-limits.js';
 import type { BrainId, LimitWindow, ModelPrice, RunError, Usage } from './types.js';
 import { BRAIN_IDS, emptyUsage } from './types.js';
 import {
@@ -54,7 +54,10 @@ export interface UsageOptions {
   prices?: Record<string, ModelPrice>;
   /** One minimal Claude call to read rate_limit_event. Defaults to false; can incur a charge. */
   live?: boolean;
-  /** Read stores only; skip Antigravity and OpenCode Go quota requests. Defaults to false. */
+  /**
+   * Read stores only: skip Claude Code's and Antigravity's `/usage` reports and the OpenCode Go
+   * quota request. Claude Code's windows are then as old as its own cache. Defaults to false.
+   */
   offline?: boolean;
   /**
    * Subscription windows too. Defaults to true; false reads the sessions alone, and every CLI's
@@ -91,7 +94,7 @@ export interface BrainUsage {
   brain: BrainId;
   /** Null means unavailable, not 0% used. */
   limits: LimitWindow[] | null;
-  /** `cache`: what the CLI itself fetched last and keeps on disk (Claude Code). */
+  /** `cli`: the CLI's own usage report, asked now. `cache`: what Claude Code fetched last and keeps on disk. */
   limitsSource: 'rollout' | 'live' | 'cli' | 'api' | 'cache' | null;
   /** ISO snapshot observation time; Codex uses the persisted event timestamp. */
   limitsObservedAt: string | null;
@@ -156,12 +159,15 @@ export async function usage(options: UsageOptions = {}): Promise<UsageReport> {
         const samples = await claudeSamples(files.get(session.id));
         report.sessions.push(summarize(session, samples, 'transcript', options.prices));
       }
+      const file = claudeFile(home, env, options.homes?.claude !== undefined);
       report.brains.push(
         !windows
           ? notAsked(brain)
           : options.live
             ? await claudeLimits(home, env, options)
-            : claudeCachedLimits(claudeFile(home, env, options.homes?.claude !== undefined)),
+            : options.offline
+              ? claudeCachedLimits(file)
+              : await claudeFreshLimits(file, env, options, options.homes?.claude),
       );
     } else if (brain === 'codex') {
       const snapshots = new Map<string, LimitSnapshot>();

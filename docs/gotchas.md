@@ -296,6 +296,14 @@ an hour. When a CLI does not answer, a built-in list is used and marked `source:
   `~/.claude.json` (`cachedUsageUtilization`: `fetchedAtMs`, `accountUuid`, and
   `utilization.five_hour` / `seven_day` / `seven_day_opus` / `seven_day_sonnet` in whole
   percent with `resets_at`). Other keys there are internal code names; they are left out.
+  Nothing else rewrites that cache: not a session, not the status line. Read alone it was two
+  days old on a machine in daily use, and said 88% of a week that stood at 98%.
+  `claude -p /usage --output-format json` rewrites it without a turn: the result carries
+  `num_turns: 0`, `total_cost_usd: 0` and `local_command: "usage"`, and Claude Code leaves a
+  cache younger than a minute alone. Brainyard checks the version first (2.1.294 is the oldest
+  one seen to have the command in print mode): an older print mode may take `/usage` for a
+  prompt. `--no-session-persistence` keeps the transcript away, but Claude Code still makes a
+  store folder for the working directory, so every check runs in the same one.
 - Codex `token_count.info.total_token_usage` is cumulative. Adding snapshots doubles
   the session. `turn_context.model` prices increments when the model changes; a
   corrected/decreased total loses its historical model assignment, so its cost is unknown.

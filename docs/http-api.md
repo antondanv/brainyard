@@ -69,7 +69,7 @@ and pane functions; the README describes their fields.
 - `stop` without `cwd` stops the session in its own folder; a session that is not running
   answers `not-running`. Only Claude Code has background sessions.
 - `usage` makes no model call unless `live: true` (one tiny Claude Code call, which may cost);
-  `offline: true` reads saved stores only. `prices` is
+  `offline: true` reads saved stores only, without the CLIs' own `/usage` reports. `prices` is
   `{"model": {"input": 3, "output": 15}}` in dollars per million tokens.
 - A pane is named exactly, as `/api/panes` lists it: tmux itself would take the start of a
   name and act on another pane. `send` types `data` as is (keys, escape sequences, text in any

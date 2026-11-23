@@ -1,6 +1,6 @@
 /** Subscription metadata requests, separate from model inference. */
 import { readFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -69,6 +69,77 @@ export function claudeCachedLimits(path: string): BrainUsage {
   };
 }
 
+/** The first Claude Code whose print mode was seen to answer `/usage` itself, with no model turn. */
+const CLAUDE_USAGE_SINCE = [2, 1, 294] as const;
+/** Claude Code leaves a cache younger than this alone: asking again would tell nothing new. */
+const CLAUDE_CACHE_FRESH_MS = 60_000;
+
+/**
+ * Claude Code's windows as they are now. Its `/usage` in print mode is a local
+ * command — no model turn, no cost — that fetches the plan usage and rewrites
+ * the cache `claudeCachedLimits` reads; the cache alone is as old as the last
+ * `/usage` a person opened. Whatever goes wrong, what is cached still answers.
+ * `configDir` is a store other than the default one.
+ */
+export async function claudeFreshLimits(
+  path: string,
+  env: NodeJS.ProcessEnv,
+  options: UsageOptions,
+  configDir?: string,
+): Promise<BrainUsage> {
+  const cached = claudeCachedLimits(path);
+  if (options.signal?.aborted || seenSince(cached, Date.now() - CLAUDE_CACHE_FRESH_MS)) return cached;
+  const info = BRAINS.claude;
+  const command = resolveCommand(options.commands?.claude, info.binary, info.envVar, env);
+  if (!command) return cached;
+  try {
+    // One folder for every check: Claude Code keeps a store folder per working directory.
+    const dir = join(tmpdir(), 'brainyard-claude-usage');
+    await mkdir(dir, { recursive: true });
+    const deadline = Date.now() + (options.timeoutMs ?? 30_000);
+    const settings = {
+      cwd: dir,
+      env: withoutSessionVars(configDir ? { ...env, CLAUDE_CONFIG_DIR: configDir } : env),
+      signal: options.signal,
+    };
+    const version = await capture(command, ['--version'], {
+      ...settings,
+      timeoutMs: Math.max(1, Math.min(5000, deadline - Date.now())),
+    });
+    // An older print mode may take /usage for a prompt: never send it without proof of support.
+    if (cliFailure(version) || !atLeast(version.stdout, CLAUDE_USAGE_SINCE)) return cached;
+    const asked = Date.now();
+    const result = await capture(
+      command,
+      ['-p', '/usage', '--output-format', 'json', '--no-session-persistence', '--strict-mcp-config'],
+      { ...settings, timeoutMs: Math.max(1, deadline - Date.now()) },
+    );
+    if (cliFailure(result) || obj(parse(result.stdout)).local_command !== 'usage') return cached;
+    const fresh = claudeCachedLimits(path);
+    // The report without a rewritten cache is Claude Code's own last-known numbers (its endpoint was busy).
+    return seenSince(fresh, asked - CLAUDE_CACHE_FRESH_MS) ? { ...fresh, limitsSource: 'cli' } : fresh;
+  } catch {
+    return cached;
+  }
+}
+
+function seenSince(brain: BrainUsage, ms: number): boolean {
+  return brain.limits !== null && brain.limitsObservedAt !== null && Date.parse(brain.limitsObservedAt) >= ms;
+}
+
+/** Whether the first `x.y.z` in a CLI's `--version` is this one or a later one. */
+function atLeast(text: string, least: readonly [number, number, number]): boolean {
+  const parts = text
+    .match(/\b(\d+)\.(\d+)\.(\d+)/)
+    ?.slice(1)
+    .map(Number);
+  if (!parts) return false;
+  for (const [index, want] of least.entries()) {
+    if (parts[index]! !== want) return parts[index]! > want;
+  }
+  return true;
+}
+
 export async function agyLimits(env: NodeJS.ProcessEnv, options: UsageOptions): Promise<BrainUsage> {
   const brain = 'antigravity';
   if (options.signal?.aborted) return failed(brain, 'stopped', 'Antigravity quota check was cancelled.');
@@ -90,12 +161,8 @@ export async function agyLimits(env: NodeJS.ProcessEnv, options: UsageOptions): 
     });
     const problem = cliFailure(version);
     if (problem) return failed(brain, problem, 'Could not check the Antigravity CLI version.');
-    const parts = version.stdout
-      .match(/\b(\d+)\.(\d+)\.(\d+)/)
-      ?.slice(1)
-      .map(Number);
     // Older print mode can treat /usage as a model prompt. Never send it without proof of support.
-    if (!parts || !(parts[0]! > 1 || (parts[0] === 1 && (parts[1]! > 1 || (parts[1] === 1 && parts[2]! >= 11)))))
+    if (!atLeast(version.stdout, [1, 1, 11]))
       return missing(brain, 'unsupported', 'Structured /usage reports require Antigravity CLI 1.1.11 or later.');
     const result = await capture(command, ['-p', '/usage', '--output-format', 'json'], {
       ...settings,

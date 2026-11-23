@@ -15,6 +15,13 @@ All notable changes to this project are documented here. The format follows
   the log line (`display`) names the variables without their values. A removal (`undefined`)
   reaches a background session only when its launch starts the service.
 
+- Claude Code's subscription windows were as old as the last `/usage` a person opened in it:
+  nothing else rewrites the cache `usage()` reads, so a week could show 88% while it stood at
+  98%. `usage()` now has Claude Code fetch them first with `claude -p /usage` — a local command
+  of Claude Code 2.1.294 and later, with no model turn and no cost — at most once a minute, and
+  reports them with `limitsSource: 'cli'`. An older CLI, a signed-out one or `offline: true`
+  leave the cached windows, with `limitsSource: 'cache'` and their age in `limitsObservedAt`.
+
 ## [0.3.0] - 2026-10-07
 
 ### Added

@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
@@ -39,7 +39,8 @@ describe('Claude Code subscription windows from its own cache', () => {
   const read = async (data: unknown) => {
     const home = tempDir();
     writeFileSync(join(home, '.claude.json'), JSON.stringify(data));
-    return (await usage({ cwd: folder(), brains: ['claude'], homes: { claude: home }, limit: 0 })).brains[0]!;
+    return (await usage({ cwd: folder(), brains: ['claude'], homes: { claude: home }, limit: 0, offline: true }))
+      .brains[0]!;
   };
 
   it('reads the windows Claude Code fetched last, with when it did, and makes no call', async () => {
@@ -102,6 +103,7 @@ describe('where Claude Code keeps its cache', () => {
       cwd: folder(),
       brains: ['claude'],
       limit: 0,
+      offline: true,
       env: { HOME: home, CLAUDE_CONFIG_DIR: '' },
     });
     expect(plain.brains[0]).toMatchObject({ limitsSource: 'cache', limits: [{ window: 'five_hour' }] });
@@ -110,6 +112,7 @@ describe('where Claude Code keeps its cache', () => {
       cwd: folder(),
       brains: ['claude'],
       limit: 0,
+      offline: true,
       env: { HOME: home, CLAUDE_CONFIG_DIR: store },
     });
     expect(named.brains[0]).toMatchObject({ limits: null, limitsUnavailable: 'missing' });
@@ -118,6 +121,7 @@ describe('where Claude Code keeps its cache', () => {
       cwd: folder(),
       brains: ['claude'],
       limit: 0,
+      offline: true,
       env: { HOME: home, CLAUDE_CONFIG_DIR: store },
     });
     expect(kept.brains[0]).toMatchObject({ limitsSource: 'cache' });
@@ -169,7 +173,7 @@ describe('saved usage', () => {
       claudeMessage('m2', 'b'),
       claudeMessage('m1', 'a'),
     ]);
-    const report = await usage({ cwd, brains: ['claude'], homes: { claude: home }, prices });
+    const report = await usage({ cwd, brains: ['claude'], homes: { claude: home }, prices, offline: true });
     const session = report.sessions[0]!;
     expect(session.usage).toEqual({
       inputTokens: 20,
@@ -195,7 +199,7 @@ describe('saved usage', () => {
       { type: 'noise', text: 'x'.repeat(300_000) },
     ]);
     appendFileSync(path, `not JSON\n${JSON.stringify(claudeMessage('bad', 'a')).slice(0, -3)}`);
-    const options = { cwd, brains: ['claude'], homes: { claude: home }, prices };
+    const options = { cwd, brains: ['claude'], homes: { claude: home }, prices, offline: true };
     expect((await usage(options)).sessions[0]?.usage?.inputTokens).toBe(10);
     appendFileSync(path, `${JSON.stringify(claudeMessage('bad', 'a')).slice(-3)}\n`);
     expect((await usage(options)).sessions[0]?.usage?.inputTokens).toBe(20);
@@ -206,7 +210,7 @@ describe('saved usage', () => {
       home = tempDir();
     claudeStore(home, cwd, 'unknown-model', [claudeMessage('a', 'a'), claudeMessage('u', 'unknown')]);
     claudeStore(home, cwd, 'empty', []);
-    const report = await usage({ cwd, brains: ['claude'], homes: { claude: home }, prices });
+    const report = await usage({ cwd, brains: ['claude'], homes: { claude: home }, prices, offline: true });
     expect(report.sessions.find((s) => s.id === 'unknown-model')).toMatchObject({ costUsd: null, costSource: null });
     expect(report.sessions.find((s) => s.id === 'empty')).toMatchObject({ usage: null, costUsd: null });
   });
@@ -322,7 +326,14 @@ describe('saved usage', () => {
       home = tempDir();
     claudeStore(home, cwd, 'older', [claudeMessage('m', 'a')]);
     claudeStore(home, cwd, 'newer', [claudeMessage('m', 'b')]);
-    const report = await usage({ cwd, brains: ['claude'], homes: { claude: home }, sessionId: 'older', limit: 1 });
+    const report = await usage({
+      cwd,
+      brains: ['claude'],
+      homes: { claude: home },
+      sessionId: 'older',
+      limit: 1,
+      offline: true,
+    });
     expect(report.sessions.map((session) => session.id)).toEqual(['older']);
   });
 
@@ -435,19 +446,121 @@ describe('saved usage', () => {
   });
 });
 
-describe('live Claude subscription limits', () => {
-  it('makes no call unless requested', async () => {
-    const rec = recording();
-    await usage({
-      cwd: folder(),
-      brains: ['claude'],
-      homes: { claude: tempDir() },
-      commands: { claude: '/missing/claude' },
-      env: { FAKE_RECORD: rec.path },
+describe('Claude Code subscription windows, asked now', () => {
+  const USAGE_ARGS = ['-p', '/usage', '--output-format', 'json', '--no-session-persistence', '--strict-mcp-config'];
+  const now = {
+    five_hour: { utilization: 13, resets_at: '2026-10-12T11:20:00+00:00' },
+    seven_day: { utilization: 98 },
+  };
+  /** A store whose cache is two days old, or as old as `fetchedAtMs` says. */
+  const stale = (fetchedAtMs = Date.now() - 2 * 86_400_000) => {
+    const home = tempDir();
+    writeFileSync(
+      join(home, '.claude.json'),
+      JSON.stringify({
+        oauthAccount: { accountUuid: 'account-1' },
+        cachedUsageUtilization: {
+          fetchedAtMs,
+          accountUuid: 'account-1',
+          utilization: { five_hour: { utilization: 30 }, seven_day: { utilization: 88 } },
+        },
+      }),
+    );
+    return home;
+  };
+  const ask = async (home: string, env: Record<string, string>, over: Record<string, unknown> = {}) =>
+    (
+      await usage({
+        cwd: folder(),
+        brains: ['claude'],
+        homes: { claude: home },
+        commands: FAKE,
+        limit: 0,
+        env,
+        ...over,
+      })
+    ).brains[0]!;
+  const shares = (brain: { limits: { utilization: number }[] | null }) => brain.limits?.map((w) => w.utilization);
+
+  it('has Claude Code fetch its usage report, with no model turn, and reads the cache it rewrote', async () => {
+    const home = stale(),
+      rec = recording(),
+      before = Date.now();
+    const brain = await ask(home, {
+      FAKE_RECORD: rec.path,
+      FAKE_USAGE: JSON.stringify(now),
+      CLAUDECODE: '1',
+      CLAUDE_CODE_SESSION_ID: 'parent',
     });
-    expect(() => rec.read()).toThrow('did not record');
+    expect(brain).toMatchObject({ limitsSource: 'cli', limitsUnavailable: null });
+    expect(brain.limits).toEqual([
+      {
+        window: 'five_hour',
+        utilization: 0.13,
+        windowMinutes: 300,
+        resetsAt: Date.parse('2026-10-12T11:20:00Z') / 1000,
+      },
+      { window: 'seven_day', utilization: 0.98, windowMinutes: 10_080 },
+    ]);
+    expect(Date.parse(brain.limitsObservedAt!)).toBeGreaterThanOrEqual(before);
+    const call = rec.read();
+    expect(call.argv).toEqual(USAGE_ARGS);
+    expect(call.stdin).toEqual([]);
+    expect(call.env.CLAUDE_CODE_SESSION_ID).toBeNull();
+    // The store named by `homes` is the one asked: its file, not the home folder's, was rewritten.
+    expect(JSON.parse(readFileSync(join(home, '.claude.json'), 'utf8')).cachedUsageUtilization.accountUuid).toBe(
+      'account-1',
+    );
   });
 
+  it('answers with what is cached when the report rewrote nothing', async () => {
+    const rec = recording();
+    const brain = await ask(stale(), { FAKE_RECORD: rec.path });
+    expect(rec.read().argv).toEqual(USAGE_ARGS);
+    expect(brain.limitsSource).toBe('cache');
+    expect(shares(brain)).toEqual([0.3, 0.88]);
+  });
+
+  it('does not ask again within a minute of the last answer', async () => {
+    const rec = recording();
+    const brain = await ask(stale(Date.now() - 5000), { FAKE_RECORD: rec.path, FAKE_USAGE: JSON.stringify(now) });
+    expect(() => rec.read()).toThrow('did not record');
+    expect(shares(brain)).toEqual([0.3, 0.88]);
+  });
+
+  it.each(['2.1.293', '1.9.999', 'unknown'])('never sends /usage as a prompt to Claude Code %s', async (version) => {
+    const rec = recording();
+    const brain = await ask(stale(), {
+      FAKE_RECORD: rec.path,
+      FAKE_USAGE: JSON.stringify(now),
+      FAKE_CLAUDE_VERSION: version,
+    });
+    expect(rec.read().argv).toEqual(['--version']);
+    expect(brain.limitsSource).toBe('cache');
+  });
+
+  it('reads the cache alone with offline: true', async () => {
+    const rec = recording();
+    const brain = await ask(stale(), { FAKE_RECORD: rec.path, FAKE_USAGE: JSON.stringify(now) }, { offline: true });
+    expect(() => rec.read()).toThrow('did not record');
+    expect(brain.limitsSource).toBe('cache');
+  });
+
+  it('keeps the cached windows when Claude Code is absent, signed out or stalls', async () => {
+    const usageNow = { FAKE_USAGE: JSON.stringify(now) };
+    const absent = await ask(stale(), usageNow, { commands: { claude: '/missing/claude' } });
+    expect(shares(absent)).toEqual([0.3, 0.88]);
+    const out = await ask(stale(), { ...usageNow, FAKE_AUTH: 'out' });
+    expect(shares(out)).toEqual([0.3, 0.88]);
+    const stalled = await ask(stale(), { ...usageNow, FAKE_SCENARIO: 'usage-delay' }, { timeoutMs: 200 });
+    expect(stalled).toMatchObject({ limitsSource: 'cache', limitsUnavailable: null });
+    // With nothing cached either, the reason stays the usual one.
+    const none = await ask(tempDir(), {}, { commands: { claude: '/missing/claude' } });
+    expect(none).toMatchObject({ limits: null, limitsUnavailable: 'missing' });
+  });
+});
+
+describe('live Claude subscription limits', () => {
   it('uses an isolated minimal call and does not resume or alter a stored session', async () => {
     const cwd = folder(),
       home = tempDir(),

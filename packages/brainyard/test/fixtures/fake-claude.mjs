@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A stand-in for `claude` that speaks its stream-json dialect. Like the real
 // CLI, with `--input-format stream-json` it does not exit until stdin closes.
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { lines, recorder } from './fake-common.mjs';
 
@@ -11,7 +11,7 @@ const record = recorder(args);
 const out = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 
 if (args[0] === '--version') {
-  console.log('2.1.999 (Claude Code)');
+  console.log(`${process.env.FAKE_CLAUDE_VERSION ?? '2.1.999'} (Claude Code)`);
   process.exit(0);
 }
 if (args[0] === '--help') {
@@ -31,6 +31,35 @@ if (args[0] === 'agents') {
 if (args[0] === 'stop') {
   if (process.env.FAKE_STOP_ERROR) console.error(process.env.FAKE_STOP_ERROR);
   process.exit(Number(process.env.FAKE_STOP_EXIT ?? 0));
+}
+// Print mode answers /usage itself, with no model turn. The real CLI fetches the plan usage and
+// rewrites its cache; the fake rewrites it only where a test says what with (FAKE_USAGE).
+if (args.includes('/usage')) {
+  if (scenario === 'usage-delay') await new Promise((resolve) => setTimeout(resolve, 30000));
+  if (process.env.FAKE_AUTH === 'out') {
+    console.error('Not logged in · Please run /login');
+    process.exit(1);
+  }
+  if (process.env.FAKE_USAGE) {
+    const file = join(process.env.CLAUDE_CONFIG_DIR || process.env.HOME, '.claude.json');
+    const data = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+    data.cachedUsageUtilization = {
+      fetchedAtMs: Date.now(),
+      accountUuid: data.oauthAccount?.accountUuid,
+      utilization: JSON.parse(process.env.FAKE_USAGE),
+    };
+    writeFileSync(file, JSON.stringify(data));
+  }
+  out({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    num_turns: 0,
+    total_cost_usd: 0,
+    local_command: 'usage',
+    result: 'You are currently using your subscription to power your Claude Code usage',
+  });
+  process.exit(0);
 }
 // Without `-p` the real CLI is interactive: it owns the terminal until you
 // exit. The fake records how it was called and exits.

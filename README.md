@@ -64,9 +64,9 @@ exists because a real run failed without it ([battle-tested quirks](docs/gotchas
 
 `brainyard` in a terminal is one full-screen app; piped or in a script it prints the status
 table instead. A card for each agent shows its sign-in and its subscription limits as bars
-(Claude Code's are the ones its own `/usage` fetched last); then the panes, with what each CLI
-does, its memory and how long it has been quiet; sessions running in other folders; and this
-folder's sessions with their tokens and cost. It keeps reading all of it while it is open and
+(Claude Code's come from its own `/usage` report, asked without a model turn); then the panes,
+with what each CLI does, its memory and how long it has been quiet; sessions running in other
+folders; and this folder's sessions with their tokens and cost. It keeps reading all of it while it is open and
 makes no paid call of its own. It speaks English or Russian.
 
 Enter goes into the selected pane, full screen, and Ctrl+Q comes back; on an agent Enter starts
@@ -376,14 +376,14 @@ and the windows of each subscription:
 
 | CLI | Tokens and cost of saved sessions | Subscription limits |
 |---|---|---|
-| Claude Code | Whole transcript, counted once per message id; estimate from `prices` | What Claude Code itself fetched last (its `/usage`), kept in `~/.claude.json`; `rate_limit_event` with `live: true` |
+| Claude Code | Whole transcript, counted once per message id; estimate from `prices` | `claude -p /usage`: Claude Code fetches its plan usage, with no model turn, into `~/.claude.json`; `rate_limit_event` with `live: true` |
 | Codex | Last cumulative rollout total; cost by each turn's model | Freshest rollout snapshots across the account's store |
 | Antigravity | Generation metadata in `conversations/<id>.db`; estimate from `prices` | `agy -p /usage --output-format json`: weekly and five-hour quotas by model group |
 | OpenCode | Assistant messages in `opencode.db`, or retained session totals; reported cost or estimate from `prices` | OpenCode Go API: rolling, weekly and monthly windows |
 
 - **No model is called** unless you pass `live: true`: one minimal, isolated Claude call with a
-  30-second timeout, which can cost money. Antigravity and OpenCode Go answer metadata requests
-  without a turn; `offline: true` skips those too and reads the stores only.
+  30-second timeout, which can cost money. Claude Code, Antigravity and OpenCode Go answer
+  metadata requests without a turn; `offline: true` skips those too and reads the stores only.
 - **Options.** `brains` picks the CLIs, `sessionId` one session, `limit` the sessions per CLI
   (200 by default, `0` for the limits alone), `limits: false` the sessions alone (every
   window comes back `not_requested`), `headless: true` adds headless runs, `homes` other stores.
@@ -392,7 +392,11 @@ and the windows of each subscription:
   windows, `group` and `label`. Their source and the time they were seen come along: an old
   snapshot is not a live check, and a window whose reset has passed says nothing about now.
 - **Claude Code's windows** are read for free from its global file (`~/.claude.json`, or the
-  one in `CLAUDE_CONFIG_DIR`); a cache of another account than the one signed in is left out
+  one in `CLAUDE_CONFIG_DIR`), which Claude Code rewrites when its `/usage` is opened. So
+  `usage()` first runs `claude -p /usage` — a local command of Claude Code 2.1.294 and later,
+  with no model turn (`limitsSource: 'cli'`) — at most once a minute. An older CLI, a signed-out
+  one or `offline: true` leave what was cached last (`limitsSource: 'cache'`), as old as
+  `limitsObservedAt` says. A cache of another account than the one signed in is left out
   (`limitsUnavailable: 'other_account'`).
 - **OpenCode Go** takes `OPENCODE_GO_API_KEY` or `OPENCODE_API_KEY`, then the keys for
   `opencode-go`/`opencode` in its `auth.json` (or `OPENCODE_AUTH_CONTENT`); an `apiKey` in
@@ -470,7 +474,7 @@ not news (a reasoning block, a successful tool result).
 | Lists its models | aliases | ✓ | ✓ | ✓ |
 | Web can be switched off | ✓ | ✓ | — (warns) | ✓ |
 | Shell can be switched off | ✓ | sandboxed instead | — (warns) | ✓ |
-| Subscription windows (`usage`) | its `/usage` cache; a live call | rollout snapshots | `/usage` command | Go API |
+| Subscription windows (`usage`) | `/usage` command and its cache; a live call | rollout snapshots | `/usage` command | Go API |
 
 An option a CLI cannot honour is never dropped silently: it comes back as a `warning` event and
 in `result.warnings`.
