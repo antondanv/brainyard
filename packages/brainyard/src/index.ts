@@ -30,6 +30,7 @@ export {
 export { estimateCost } from './cost.js';
 export { BrainyardError, classifyFailure, findReset } from './errors.js';
 export { clip, describeTool, tidyPaths } from './humanize.js';
+export { type LastMessageOptions, lastMessage, type SessionMessage } from './last-message.js';
 export { type OpenOptions, type OpenPlan, type OpenResult, open, planOpen } from './open.js';
 export {
   attachPane,
