@@ -120,8 +120,11 @@ export function formatFields(line: string): string[] {
 
 /** tmux refuses to start inside tmux, and a pane is not inside the terminal that started it. */
 const NESTING = ['TMUX', 'TMUX_PANE'];
-/** tmux takes at most 16 KB per command; hex input is three characters a byte. */
-const SEND_CHUNK = 2_000;
+/**
+ * tmux 3.7 rejects a command with ~1000 separate arguments ("command too long"),
+ * well before the 16 KB imsg limit; each byte is its own hex argument to `send-keys -H`.
+ */
+const SEND_CHUNK = 400;
 
 interface Tmux {
   command: Command;

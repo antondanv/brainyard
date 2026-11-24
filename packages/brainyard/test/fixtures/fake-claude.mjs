@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A stand-in for `claude` that speaks its stream-json dialect. Like the real
 // CLI, with `--input-format stream-json` it does not exit until stdin closes.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { lines, recorder } from './fake-common.mjs';
 
@@ -81,6 +81,7 @@ if (!args.includes('-p') && args[0] !== 'auth') {
     process.stdin.setRawMode?.(true);
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', (chunk) => {
+      if (process.env.FAKE_PANE_LOG) appendFileSync(process.env.FAKE_PANE_LOG, chunk);
       const shown = [...chunk].map((c) => (c < ' ' ? `^${String.fromCharCode(c.charCodeAt(0) + 64)}` : c)).join('');
       process.stdout.write(`got:${shown}\r\n`);
       if (chunk.includes('q')) process.exit(Number(process.env.FAKE_EXIT ?? 0));

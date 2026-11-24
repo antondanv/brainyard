@@ -322,6 +322,35 @@ describe.skipIf(!hasTmux)('panes (real tmux)', () => {
     expect(await closePane(started.pane, settings)).toBe(true);
   });
 
+  it('sendToPane delivers 10 KB of text without hitting tmux command length limits', async () => {
+    const log = join(tempDir(), 'pane-input.txt');
+    const started = await startPane(
+      {
+        brain: 'claude',
+        cwd: tempDir(),
+        command: FAKE.claude,
+        env: { FAKE_PANE: '1', FAKE_PANE_LOG: log },
+      },
+      settings,
+    );
+    await until(
+      () => capturePane(started.pane, settings),
+      (s) => Boolean(s && text(s.lines).includes('fake-claude ready')),
+    );
+    const payload = `${'a'.repeat(10_240)}END-10K`;
+    await sendToPane(started.pane, payload, settings);
+    const read = () => {
+      try {
+        return Promise.resolve(readFileSync(log, 'utf8'));
+      } catch {
+        return Promise.resolve('');
+      }
+    };
+    const received = await until(read, (got) => got.includes('END-10K'));
+    expect(received).toBe(payload);
+    expect(await closePane(started.pane, settings)).toBe(true);
+  });
+
   it('a pane is never named by prefix: closing one leaves the others', async () => {
     expect(await closePane('claude', settings)).toBe(false);
     expect(await capturePane('claude', settings)).toBeUndefined();
