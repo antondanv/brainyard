@@ -130,7 +130,7 @@ Enter — в выбранную панель на весь экран, Ctrl+Q �
 
 ```console
 $ brainyard status
-Brainyard 0.3.1
+Brainyard 0.3.2
 
   ● Claude Code  2.1.280   ready         signed in with claude.ai, pro
   ● Codex        0.153.4   ready         signed in with ChatGPT · default model gpt-6-astra
@@ -320,7 +320,9 @@ await open({ brain: 'claude', cwd: './app', resume: sessionId });
 
 `sessions()` показывает то же, что выбор сессий в самом CLI: headless-запуски не попадают без
 `headless: true`. `liveSessions()` читает текущий ход каждого CLI: `busy`, `waiting` (и чего
-ждёт) или `idle`. Новые версии Codex не пишут окна подтверждения в журнал, поэтому
+ждёт) или `idle`. `lastMessage(brain, id)` читает последнее сообщение агента в последнем ходе
+целиком из стенограммы Claude Code, Codex или OpenCode (для Antigravity и пустого хода отдаёт
+`undefined` и не бросает). Новые версии Codex не пишут окна подтверждения в журнал, поэтому
 `liveSessions({ panes: {} })` читает ещё и окна на экране панелей Brainyard.
 `open({ background: true })` запускает фоновую сессию Claude Code, а
 `stopSession({ brain: 'claude', sessionId, cwd })` останавливает её через `claude stop`;

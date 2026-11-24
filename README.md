@@ -128,7 +128,7 @@ Both listen on `127.0.0.1` behind the same token, `Host` and `Origin` guard as t
 
 ```console
 $ brainyard status
-Brainyard 0.3.1
+Brainyard 0.3.2
 
   ● Claude Code  2.1.280   ready         signed in with claude.ai, pro
   ● Codex        0.153.4   ready         signed in with ChatGPT · default model gpt-6-astra
@@ -316,7 +316,9 @@ await open({ brain: 'claude', cwd: './app', resume: sessionId });
 
 `sessions()` lists what the CLI's own picker lists: headless runs stay out unless
 `headless: true`. `liveSessions()` reads each CLI's current turn: `busy`, `waiting` (and what
-for) or `idle`. Recent Codex versions leave their approval dialogs out of the rollout, so
+for) or `idle`. `lastMessage(brain, id)` reads the agent's last message in the last turn whole from
+Claude Code's, Codex's or OpenCode's transcript store (returning `undefined` for Antigravity or an
+empty turn, never throwing). Recent Codex versions leave their approval dialogs out of the rollout, so
 `liveSessions({ panes: {} })` also reads the dialogs on screen in Brainyard's panes.
 `open({ background: true })` starts a Claude Code background session, and
 `stopSession({ brain: 'claude', sessionId, cwd })` stops it with `claude stop`; the
