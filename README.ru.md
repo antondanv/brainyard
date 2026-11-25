@@ -130,7 +130,7 @@ Enter — в выбранную панель на весь экран, Ctrl+Q �
 
 ```console
 $ brainyard status
-Brainyard 0.3.2
+Brainyard 0.3.3
 
   ● Claude Code  2.1.280   ready         signed in with claude.ai, pro
   ● Codex        0.153.4   ready         signed in with ChatGPT · default model gpt-6-astra

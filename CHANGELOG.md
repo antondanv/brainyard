@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.3] - 2026-11-25
+
+### Fixed
+
+- Several Antigravity launches in the same second (`open()` or `startPane()`, in one process or
+  in several) shared one `cli-<second>.log`, so `sessions()` and `findPaneSession()` could hand a
+  pane another pane's conversation or none. Each launch now gets its own log through
+  `--log-file` when `agy` supports it; older builds are spaced at least a second apart with a
+  cross-process lock. A log mixed from several processes is no longer used to guess a
+  conversation's folder.
+
+[0.3.3]: https://github.com/antondanv/brainyard/releases/tag/v0.3.3
+
 ## [0.3.2] - 2026-11-24
 
 ### Added

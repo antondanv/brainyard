@@ -1,6 +1,6 @@
 {
   "name": "@antondanv/brainyard",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "One API for agentic coding CLIs — Claude Code, Codex, Antigravity and OpenCode: status checks, one-shot asks, streamed agent runs with steering, sessions, tmux panes, usage and subscription limits, models and MCP.",
   "keywords": [
     "claude-code",
