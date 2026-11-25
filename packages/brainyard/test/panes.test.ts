@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { clearFlagCache } from '../src/flags.js';
 import {
   capturePane,
   clipboardCommand,
@@ -194,6 +195,155 @@ describe.skipIf(!hasTmux)('panes (real tmux)', () => {
     expect(found).toMatchObject({ id: 'ses_inPane', title: 'hello' });
     await closePane(started.pane, settings);
   });
+
+  it('Antigravity panes started simultaneously keep separate logs and resolve their own sessions', async () => {
+    const home = tempDir('brainyard-agy-home-');
+    const dirA = realpathSync(tempDir('brainyard-agy-a-'));
+    const dirB = realpathSync(tempDir('brainyard-agy-b-'));
+    const dirC = realpathSync(tempDir('brainyard-agy-c-'));
+    // Four panes at once: two in separate folders and two sharing the same folder.
+    const specs = [
+      { cwd: dirA, id: '1111aaaa-0000-4000-8000-000000000001' },
+      { cwd: dirB, id: '2222bbbb-0000-4000-8000-000000000002' },
+      { cwd: dirC, id: '3333cccc-0000-4000-8000-000000000003' },
+      { cwd: dirC, id: '4444dddd-0000-4000-8000-000000000004' },
+    ];
+    const started = await Promise.all(
+      specs.map((spec) =>
+        startPane(
+          {
+            brain: 'antigravity',
+            cwd: spec.cwd,
+            command: FAKE.antigravity,
+            prompt: `task ${spec.id.slice(0, 4)}`,
+            homes: { antigravity: home },
+            env: { FAKE_PANE: '1', FAKE_AGY_HOME: home, FAKE_AGY_DB: '1', FAKE_SESSION_ID: spec.id },
+          },
+          settings,
+        ),
+      ),
+    );
+    // A fifth pane in dirC that has not created its conversation yet must not steal a sibling's session.
+    const pending = await startPane(
+      {
+        brain: 'antigravity',
+        cwd: dirC,
+        command: FAKE.antigravity,
+        homes: { antigravity: home },
+        env: { FAKE_PANE: '1', FAKE_AGY_HOME: home, FAKE_AGY_DB: '1', FAKE_AGY_SKIP_LOG_CONV: '1' },
+      },
+      settings,
+    );
+    try {
+      for (const pane of [...started, pending]) {
+        await until(
+          () => capturePane(pane.pane, settings),
+          (s) => Boolean(s && text(s.lines).includes('fake-agy ready')),
+        );
+      }
+      const panes = await listPanes(settings);
+      for (let i = 0; i < specs.length; i++) {
+        const info = panes.find((p) => p.pane === started[i]!.pane)!;
+        const found = await findPaneSession(info, { homes: { antigravity: home } });
+        expect(found?.id).toBe(specs[i]!.id);
+      }
+      const pendingInfo = panes.find((p) => p.pane === pending.pane)!;
+      expect(await findPaneSession(pendingInfo, { homes: { antigravity: home } })).toBeUndefined();
+      const logs = readdirSync(join(home, 'log')).filter((name) => /^cli-.*\.log$/.test(name));
+      expect(logs).toHaveLength(5);
+    } finally {
+      for (const pane of [...started, pending]) await closePane(pane.pane, settings);
+    }
+  });
+
+  it('Antigravity panes without --log-file space launches apart and never guess from a mixed log', async () => {
+    const home = tempDir('brainyard-agy-old-home-');
+    const dirA = realpathSync(tempDir('brainyard-agy-old-a-'));
+    const dirB = realpathSync(tempDir('brainyard-agy-old-b-'));
+    const idA = 'aaaa5555-0000-4000-8000-000000000001';
+    const idB = 'bbbb6666-0000-4000-8000-000000000002';
+    process.env.FAKE_OLD = '1';
+    clearFlagCache();
+    let started: Awaited<ReturnType<typeof startPane>>[] = [];
+    try {
+      started = await Promise.all([
+        startPane(
+          {
+            brain: 'antigravity',
+            cwd: dirA,
+            command: FAKE.antigravity,
+            homes: { antigravity: home },
+            env: { FAKE_OLD: '1', FAKE_PANE: '1', FAKE_AGY_HOME: home, FAKE_AGY_DB: '1', FAKE_SESSION_ID: idA },
+          },
+          settings,
+        ),
+        startPane(
+          {
+            brain: 'antigravity',
+            cwd: dirB,
+            command: FAKE.antigravity,
+            homes: { antigravity: home },
+            env: { FAKE_OLD: '1', FAKE_PANE: '1', FAKE_AGY_HOME: home, FAKE_AGY_DB: '1', FAKE_SESSION_ID: idB },
+          },
+          settings,
+        ),
+      ]);
+      for (const pane of started) {
+        await until(
+          () => capturePane(pane.pane, settings),
+          (s) => Boolean(s && text(s.lines).includes('fake-agy ready')),
+        );
+      }
+      const panes = await listPanes(settings);
+      const foundA = await findPaneSession(panes.find((p) => p.pane === started[0]!.pane)!, {
+        homes: { antigravity: home },
+      });
+      const foundB = await findPaneSession(panes.find((p) => p.pane === started[1]!.pane)!, {
+        homes: { antigravity: home },
+      });
+      expect(foundA?.id).toBe(idA);
+      expect(foundB?.id).toBe(idB);
+      const logs = readdirSync(join(home, 'log')).filter((name) => /^cli-\d{8}_\d{6}\.log$/.test(name));
+      expect(logs).toHaveLength(2);
+
+      // A mixed log on disk must not let findPaneSession attribute a conversation to the folder.
+      const mixedHome = tempDir('brainyard-agy-mixed-');
+      const mixedDir = realpathSync(tempDir('brainyard-agy-mixed-dir-'));
+      mkdirSync(join(mixedHome, 'log'), { recursive: true });
+      const { DatabaseSync } = (await import('node:sqlite')) as unknown as {
+        DatabaseSync: new (path: string) => { exec(sql: string): void; close(): void };
+      };
+      const db = new DatabaseSync(join(mixedHome, 'conversation_summaries.db'));
+      db.exec(
+        'CREATE TABLE conversation_summaries (conversation_id text, title text, workspace_uris text, status text, ' +
+          'not_fully_idle numeric, killed numeric, last_modified_time datetime, last_user_input_time datetime)',
+      );
+      db.exec(
+        "INSERT INTO conversation_summaries VALUES ('cccc7777-0000-4000-8000-000000000003', 'Mixed', '', 'CASCADE_RUN_STATUS_IDLE', 0, 0, datetime('now'), datetime('now'))",
+      );
+      db.close();
+      writeFileSync(
+        join(mixedHome, 'log', 'cli-20261125_201630.log'),
+        `I1125 20:16:30.931034 1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[${mixedDir}] appDataDir=${mixedHome}\n` +
+          'I1125 20:16:33.200623 416 server.go:1269] Created conversation cccc7777-0000-4000-8000-000000000003\n' +
+          'I1125 20:16:33.205458 666 manager.go:1710] broken uI1125 20:16:33.305403 520 http_helpers.go:787] URL: x\n',
+      );
+      const fakePaneInfo = {
+        pane: 'agy-deadbeef',
+        brain: 'antigravity' as const,
+        cwd: mixedDir,
+        startedAt: new Date(Date.now() - 5_000).toISOString(),
+        attached: false,
+        width: 80,
+        height: 24,
+      };
+      expect(await findPaneSession(fakePaneInfo, { homes: { antigravity: mixedHome } })).toBeUndefined();
+    } finally {
+      for (const pane of started) await closePane(pane.pane, settings);
+      delete process.env.FAKE_OLD;
+      clearFlagCache();
+    }
+  }, 15_000);
 
   it('OpenCode gets instructions in its environment, whatever quotes they hold, and no message', async () => {
     const started = await startPane(

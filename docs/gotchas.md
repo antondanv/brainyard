@@ -438,6 +438,15 @@ its desktop app.
 
 ## Sessions
 
+- **Antigravity** names its default CLI log by the second (`~/.gemini/antigravity-cli/log/cli-YYYYMMDD_HHMMSS.log`)
+  and opens it truncated: multiple launches in the same second overwrite each other's startup headers
+  and interleave conversation lines, while `conversation_summaries.db` leaves `workspace_uris` empty
+  for interactive sessions. `open()` and `startPane()` pass a unique `--log-file` (`cli-<second>-<tag>.log`)
+  where `agy --help` supports it — and `findPaneSession()` reads that pane's own log — falling back to
+  cross-process pacing (>1 s between starts) on older builds. `sessions()` and `findPaneSession()` also
+  skip any log that shows signs of mixed processes (multiple startups/workspaces, mid-line glog headers,
+  orphan conversation references or backward timestamp jumps) instead of attributing a conversation to
+  the wrong folder.
 - **OpenCode** keeps its sessions in `~/.local/share/opencode/opencode.db`, shared with its
   desktop app. `opencode run` gives a session rules that keep questions out
   (`plan_exit: deny`), the TUI none: that is how headless runs are told apart. Until a title is

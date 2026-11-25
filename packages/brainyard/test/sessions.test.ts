@@ -1,12 +1,17 @@
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { clearFlagCache } from '../src/flags.js';
-import { open, planOpen } from '../src/open.js';
+import { findStarted, open, planOpen } from '../src/open.js';
 import { claudeProjectDir, liveSessions, sessions, stopSession } from '../src/sessions.js';
 import { openStore } from './fixtures/opencode-store.mjs';
 import { FAKE, recording, tempDir } from './helpers.js';
+
+const execFileAsync = promisify(execFile);
 
 const lines = (...entries: unknown[]) => `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`;
 
@@ -384,6 +389,105 @@ describe('sessions: Antigravity without a workspace in its database', () => {
       ['aa11bb22-0000-4000-8000-000000000002', '/other'],
     ]);
   });
+
+  async function agyDb(home: string, rows: Array<[string, string, string]>) {
+    const { DatabaseSync } = (await import('node:sqlite')) as unknown as {
+      DatabaseSync: new (path: string) => { exec(sql: string): void; close(): void };
+    };
+    const db = new DatabaseSync(join(home, 'conversation_summaries.db'));
+    db.exec(
+      'CREATE TABLE conversation_summaries (conversation_id text, title text, workspace_uris text, status text, ' +
+        'not_fully_idle numeric, killed numeric, last_modified_time datetime, last_user_input_time datetime)',
+    );
+    for (const [id, title, status] of rows) {
+      db.exec(
+        `INSERT INTO conversation_summaries VALUES ('${id}', '${title}', '', '${status}', 0, 0, datetime('now'), datetime('now'))`,
+      );
+    }
+    db.close();
+  }
+
+  it.each([
+    [
+      'two workspaceDirs in one log',
+      (cwd: string, home: string) =>
+        `I1125 20:16:30.100000 1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[${cwd}] appDataDir=${home}\n` +
+        `I1125 20:16:30.200000 1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[/other] appDataDir=${home}\n` +
+        'I1125 20:16:33.200000 416 server.go:1269] Created conversation 46e97fab-ca9e-4e2e-bf34-9d7f26490bff\n',
+    ],
+    [
+      'two language server startups in one log',
+      (cwd: string, home: string) =>
+        'I1125 20:16:30.100000 10 server.go:2781] Starting language server process with pid 1001\n' +
+        'I1125 20:16:30.200000 10 server.go:2781] Starting language server process with pid 1002\n' +
+        `I1125 20:16:30.300000 1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[${cwd}] appDataDir=${home}\n` +
+        'I1125 20:16:33.200000 416 server.go:1269] Created conversation 46e97fab-ca9e-4e2e-bf34-9d7f26490bff\n',
+    ],
+    [
+      'smashed mid-line glog headers after O_TRUNC overwrite',
+      (cwd: string, home: string) =>
+        `I1125 20:16:30.931034 1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[${cwd}] appDataDir=${home}\n` +
+        'I1125 20:16:33.200623 416 server.go:1269] Created conversation 46e97fab-ca9e-4e2e-bf34-9d7f26490bff (backend=BACKEND_TYPE_UNSPECIFIED)\n' +
+        'I1125 20:16:33.205458 666 manager.go:1710] Slash commands unchanged, skipping uI1125 20:16:33.305403 520 http_helpers.go:787] URL: https://example.test\n',
+    ],
+    [
+      'orphan conversation used without Created/found',
+      (cwd: string, home: string) =>
+        `I1125 20:16:30.931034 1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[${cwd}] appDataDir=${home}\n` +
+        'I1125 20:16:33.200623 416 server.go:1269] Created conversation 46e97fab-ca9e-4e2e-bf34-9d7f26490bff\n' +
+        'I1125 20:16:33.570948 514 conversation_manager.go:1080] Forwarding user message to conversation 45038e85-9e32-4168-bc2d-be56a823c0dc (items=1)\n',
+    ],
+    [
+      'large backward timestamp jump from another process buffer',
+      (cwd: string, home: string) =>
+        `I1125 20:16:30.931034 1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[${cwd}] appDataDir=${home}\n` +
+        'I1125 20:16:33.200623 416 server.go:1269] Created conversation 46e97fab-ca9e-4e2e-bf34-9d7f26490bff\n' +
+        'I1125 20:29:15.373627 230 quota_manager.go:68] doRefreshQuota: starting reload\n' +
+        'I1125 20:26:01.045669 230 quota_manager.go:68] doRefreshQuota: starting reload\n',
+    ],
+  ])('does not attribute a conversation to a folder when the log mixed processes: %s', async (_label, makeLog) => {
+    const cwd = project();
+    const home = tempDir();
+    const id = '46e97fab-ca9e-4e2e-bf34-9d7f26490bff';
+    await agyDb(home, [[id, 'Чужой разговор', 'CASCADE_RUN_STATUS_RUNNING']]);
+    mkdirSync(join(home, 'log'), { recursive: true });
+    writeFileSync(join(home, 'log', 'cli-20261125_201630.log'), makeLog(cwd, home));
+
+    expect(await sessions({ cwd, brains: ['antigravity'], homes: { antigravity: home }, live: false })).toEqual([]);
+    expect(await liveSessions({ cwd, brains: ['antigravity'], homes: { antigravity: home } })).toEqual([]);
+    expect(
+      await findStarted('antigravity', cwd, new Date(Date.now() - 60_000), { homes: { antigravity: home } }),
+    ).toBeUndefined();
+  });
+
+  it('ignores log-like text inside HandleUserInput and still recovers from a later clean log', async () => {
+    const cwd = project();
+    const home = tempDir();
+    const id = '7fe83dfb-e80c-4f0d-87ae-d3c75854396f';
+    await agyDb(home, [[id, 'Свой разговор', 'CASCADE_RUN_STATUS_IDLE']]);
+    mkdirSync(join(home, 'log'), { recursive: true });
+    // First log is mixed; second clean log quotes workspaceDirs and a glog header inside a user prompt.
+    writeFileSync(
+      join(home, 'log', 'cli-20261125_201630.log'),
+      `I1125 20:16:30.931034 1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[/wrong] appDataDir=${home}\n` +
+        `I1125 20:16:33.200623 416 server.go:1269] Created conversation ${id}\n` +
+        'I1125 20:16:33.205458 666 manager.go:1710] broken uI1125 20:16:33.305403 520 http_helpers.go:787] URL: x\n',
+    );
+    writeFileSync(
+      join(home, 'log', 'cli-20261125_202759.log'),
+      'I1125 20:27:59.972984 98 server.go:2781] Starting language server process with pid 84847\n' +
+        'I1125 20:28:00.203272 1 common.go:194] Launching CLI mode\n' +
+        `I1125 20:28:00.203724 1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[${cwd}] appDataDir=${home}\n` +
+        `I1125 20:28:01.000000 385 input_loop.go:104] HandleUserInput called with text: "workspaceDirs=[/other] I1125 20:16:30.000000 1 server.go:1] Launching CLI mode"\n` +
+        `I1125 20:28:02.803087 596 server.go:1269] Created conversation ${id} (backend=BACKEND_TYPE_UNSPECIFIED)\n`,
+    );
+
+    const list = await sessions({ cwd, brains: ['antigravity'], homes: { antigravity: home }, live: false });
+    expect(list.map((s) => [s.id, s.cwd])).toEqual([[id, cwd]]);
+    expect(
+      await sessions({ cwd: '/wrong', brains: ['antigravity'], homes: { antigravity: home }, live: false }),
+    ).toEqual([]);
+  });
 });
 
 describe('sessions: OpenCode', () => {
@@ -636,25 +740,39 @@ describe('planOpen', () => {
   });
 
   it('Antigravity has no slot for instructions: they stay in front of the first message', async () => {
+    const home = tempDir();
     const both = await planOpen({
       brain: 'antigravity',
       cwd: project(),
       system: 'Node k3f9.',
       prompt: 'continue',
       command: FAKE.antigravity,
+      homes: { antigravity: home },
     });
-    expect(both.args).toEqual(['--prompt-interactive=Node k3f9.\n\ncontinue']);
+    expect(both.args).toEqual([
+      '--log-file',
+      expect.stringMatching(/\/log\/cli-\d{8}_\d{6}-[0-9a-f]{8}\.log$/),
+      '--prompt-interactive=Node k3f9.\n\ncontinue',
+    ]);
     const alone = await planOpen({
       brain: 'antigravity',
       cwd: project(),
       system: 'Node k3f9.',
       command: FAKE.antigravity,
+      homes: { antigravity: home },
     });
-    expect(alone.args).toEqual(['--prompt-interactive=Node k3f9.']);
+    expect(alone.args).toEqual([
+      '--log-file',
+      expect.stringMatching(/\/log\/cli-\d{8}_\d{6}-[0-9a-f]{8}\.log$/),
+      '--prompt-interactive=Node k3f9.',
+    ]);
+    // Every planned launch gets its own log path so concurrent starts never share cli-<second>.log.
+    expect(both.args[1]).not.toBe(alone.args[1]);
     expect(alone.env).toBeUndefined();
   });
 
   it('Antigravity: conversation, mode and the prompt bound to its flag', async () => {
+    const home = tempDir();
     const plan = await planOpen({
       brain: 'agy',
       cwd: project(),
@@ -662,20 +780,62 @@ describe('planOpen', () => {
       prompt: '-dash',
       permissionMode: 'acceptEdits',
       command: FAKE.antigravity,
+      homes: { antigravity: home },
     });
-    expect(plan.args).toEqual(['--conversation', 'conv-1', '--mode', 'accept-edits', '--prompt-interactive=-dash']);
+    expect(plan.args).toEqual([
+      '--log-file',
+      expect.stringMatching(/\/log\/cli-\d{8}_\d{6}-[0-9a-f]{8}\.log$/),
+      '--conversation',
+      'conv-1',
+      '--mode',
+      'accept-edits',
+      '--prompt-interactive=-dash',
+    ]);
   });
 
-  it('Antigravity: bypassPermissions approves every tool', async () => {
+  it('Antigravity: bypassPermissions approves every tool, and respects caller --log-file or older CLI', async () => {
+    const home = tempDir();
     const plan = await planOpen({
       brain: 'antigravity',
       cwd: project(),
       resume: 'conv-1',
       permissionMode: 'bypassPermissions',
       command: FAKE.antigravity,
+      homes: { antigravity: home },
     });
-    expect(plan.args).toEqual(['--conversation', 'conv-1', '--dangerously-skip-permissions']);
+    expect(plan.args).toEqual([
+      '--log-file',
+      expect.stringMatching(/\/log\/cli-\d{8}_\d{6}-[0-9a-f]{8}\.log$/),
+      '--conversation',
+      'conv-1',
+      '--dangerously-skip-permissions',
+    ]);
     expect(plan.warnings).toEqual([]);
+
+    const custom = await planOpen({
+      brain: 'antigravity',
+      cwd: project(),
+      extraArgs: ['--log-file', '/tmp/mine.log'],
+      command: FAKE.antigravity,
+      homes: { antigravity: home },
+    });
+    expect(custom.args).toEqual(['--log-file', '/tmp/mine.log']);
+
+    process.env.FAKE_OLD = '1';
+    clearFlagCache();
+    try {
+      const old = await planOpen({
+        brain: 'antigravity',
+        cwd: project(),
+        resume: 'conv-1',
+        command: FAKE.antigravity,
+        homes: { antigravity: home },
+      });
+      expect(old.args).toEqual(['--conversation', 'conv-1']);
+    } finally {
+      delete process.env.FAKE_OLD;
+      clearFlagCache();
+    }
   });
 
   it('OpenCode: model, plan agent, the prompt bound to its flag, instructions in its agents', async () => {
@@ -902,6 +1062,143 @@ describe('open', () => {
     });
     expect(result).toMatchObject({ ok: true, sessionId: 'conv-new' });
   });
+
+  it('Antigravity: concurrent open() calls in one process and across processes keep separate logs', async () => {
+    const home = tempDir();
+    const dirs = [project(), project(), project(), project()];
+    const ids = [
+      '11111111-0000-4000-8000-000000000001',
+      '22222222-0000-4000-8000-000000000002',
+      '33333333-0000-4000-8000-000000000003',
+      '44444444-0000-4000-8000-000000000004',
+    ];
+    // Two in this process + two in separate child processes, all at once.
+    const tsx = fileURLToPath(new URL('../../../node_modules/.bin/tsx', import.meta.url));
+    const tsconfig = fileURLToPath(new URL('../../../tsconfig.json', import.meta.url));
+    const openModule = new URL('../src/open.ts', import.meta.url).href;
+    const spawnOpen = async (cwd: string, sessionId: string) => {
+      const script = join(tempDir(), 'run-open.mjs');
+      writeFileSync(
+        script,
+        `import { open } from ${JSON.stringify(openModule)};
+         const res = await open({
+           brain: 'antigravity',
+           cwd: ${JSON.stringify(cwd)},
+           command: ${JSON.stringify(FAKE.antigravity)},
+           homes: { antigravity: ${JSON.stringify(home)} },
+           env: { FAKE_AGY_HOME: ${JSON.stringify(home)}, FAKE_AGY_DB: '1', FAKE_SESSION_ID: ${JSON.stringify(sessionId)} },
+         });
+         console.log(JSON.stringify(res));\n`,
+      );
+      const { stdout } = await execFileAsync(tsx, ['--tsconfig', tsconfig, script]);
+      return JSON.parse(stdout.trim()) as { ok: boolean; sessionId?: string };
+    };
+
+    const results = await Promise.all([
+      open({
+        brain: 'antigravity',
+        cwd: dirs[0]!,
+        command: FAKE.antigravity,
+        homes: { antigravity: home },
+        env: { FAKE_AGY_HOME: home, FAKE_AGY_DB: '1', FAKE_SESSION_ID: ids[0]! },
+      }),
+      open({
+        brain: 'antigravity',
+        cwd: dirs[1]!,
+        command: FAKE.antigravity,
+        homes: { antigravity: home },
+        env: { FAKE_AGY_HOME: home, FAKE_AGY_DB: '1', FAKE_SESSION_ID: ids[1]! },
+      }),
+      spawnOpen(dirs[2]!, ids[2]!),
+      spawnOpen(dirs[3]!, ids[3]!),
+    ]);
+
+    expect(results.map((r) => [r.ok, r.sessionId])).toEqual(ids.map((id) => [true, id]));
+    const logs = readdirSync(join(home, 'log')).filter((name) => /^cli-.*\.log$/.test(name));
+    expect(logs).toHaveLength(4);
+    for (let i = 0; i < dirs.length; i++) {
+      const list = await sessions({
+        cwd: dirs[i]!,
+        brains: ['antigravity'],
+        homes: { antigravity: home },
+        live: false,
+      });
+      expect(list.map((s) => s.id)).toEqual([ids[i]!]);
+    }
+  });
+
+  it('Antigravity without --log-file: concurrent launches across processes are spaced into distinct seconds', async () => {
+    const home = tempDir();
+    const dirs = [project(), project(), project()];
+    const ids = [
+      'aaaa1111-0000-4000-8000-000000000001',
+      'bbbb2222-0000-4000-8000-000000000002',
+      'cccc3333-0000-4000-8000-000000000003',
+    ];
+    const tsx = fileURLToPath(new URL('../../../node_modules/.bin/tsx', import.meta.url));
+    const tsconfig = fileURLToPath(new URL('../../../tsconfig.json', import.meta.url));
+    const openModule = new URL('../src/open.ts', import.meta.url).href;
+    const spawnOldOpen = async (cwd: string, sessionId: string) => {
+      const script = join(tempDir(), 'run-old-open.mjs');
+      writeFileSync(
+        script,
+        `import { open } from ${JSON.stringify(openModule)};
+         const res = await open({
+           brain: 'antigravity',
+           cwd: ${JSON.stringify(cwd)},
+           command: ${JSON.stringify(FAKE.antigravity)},
+           homes: { antigravity: ${JSON.stringify(home)} },
+           env: { FAKE_OLD: '1', FAKE_AGY_HOME: ${JSON.stringify(home)}, FAKE_AGY_DB: '1', FAKE_SESSION_ID: ${JSON.stringify(sessionId)} },
+         });
+         console.log(JSON.stringify(res));\n`,
+      );
+      const { stdout } = await execFileAsync(tsx, ['--tsconfig', tsconfig, script], {
+        env: { ...process.env, FAKE_OLD: '1' },
+      });
+      return JSON.parse(stdout.trim()) as { ok: boolean; sessionId?: string; startedAt: string };
+    };
+
+    process.env.FAKE_OLD = '1';
+    clearFlagCache();
+    try {
+      const results = await Promise.all([
+        open({
+          brain: 'antigravity',
+          cwd: dirs[0]!,
+          command: FAKE.antigravity,
+          homes: { antigravity: home },
+          env: { FAKE_OLD: '1', FAKE_AGY_HOME: home, FAKE_AGY_DB: '1', FAKE_SESSION_ID: ids[0]! },
+        }),
+        open({
+          brain: 'antigravity',
+          cwd: dirs[1]!,
+          command: FAKE.antigravity,
+          homes: { antigravity: home },
+          env: { FAKE_OLD: '1', FAKE_AGY_HOME: home, FAKE_AGY_DB: '1', FAKE_SESSION_ID: ids[1]! },
+        }),
+        spawnOldOpen(dirs[2]!, ids[2]!),
+      ]);
+
+      expect(results.map((r) => [r.ok, r.sessionId])).toEqual(ids.map((id) => [true, id]));
+      const times = results.map((r) => Date.parse(r.startedAt)).sort((a, b) => a - b);
+      expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(1_000);
+      expect(times[2]! - times[1]!).toBeGreaterThanOrEqual(1_000);
+      const logs = readdirSync(join(home, 'log')).filter((name) => /^cli-\d{8}_\d{6}\.log$/.test(name));
+      expect(logs).toHaveLength(3);
+      for (let i = 0; i < dirs.length; i++) {
+        const list = await sessions({
+          cwd: dirs[i]!,
+          brains: ['antigravity'],
+          homes: { antigravity: home },
+          live: false,
+        });
+        expect(list.map((s) => s.id)).toEqual([ids[i]!]);
+      }
+    } finally {
+      delete process.env.FAKE_OLD;
+      clearFlagCache();
+    }
+  }, 15_000);
 
   it('OpenCode: the new session is found in its database after the TUI exits', async () => {
     const cwd = project();

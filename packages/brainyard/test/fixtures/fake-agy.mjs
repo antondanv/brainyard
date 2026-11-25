@@ -26,7 +26,10 @@ if (args[0] === 'models') {
   process.exit(0);
 }
 if (args[0] === '--help') {
-  console.log('Usage of agy:\n  --print-timeout  --sandbox  --mode  --conversation  --add-dir  --prompt-interactive');
+  console.log(
+    'Usage of agy:\n  --print-timeout  --sandbox  --mode  --conversation  --add-dir  --prompt-interactive' +
+      (process.env.FAKE_OLD ? '' : '  --log-file'),
+  );
   process.exit(0);
 }
 if (args.includes('/usage')) {
@@ -41,26 +44,94 @@ if (args.includes('/usage')) {
   process.stdout.write('\n');
   process.exit(0);
 }
-// Without print mode the real CLI is interactive. The fake writes the line
-// the real one appends to history.jsonl for a prompt, and exits.
+// Without print mode the real CLI is interactive. The fake writes the run log
+// (and either conversation_summaries.db when FAKE_AGY_DB=1 or history.jsonl)
+// and exits, or stays alive when FAKE_PANE=1.
 if (!args.some((arg) => arg === '-p' || arg.startsWith('-p=') || arg === '--print')) {
   const home = process.env.FAKE_AGY_HOME;
   if (home) {
-    const { mkdirSync, appendFileSync } = await import('node:fs');
+    const { appendFileSync, mkdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { dirname, resolve, sep } = await import('node:path');
     mkdirSync(home, { recursive: true });
     const given = args.find((arg) => arg.startsWith('--prompt-interactive='));
-    const conversation = args.includes('--conversation')
+    const resuming = args.includes('--conversation');
+    const conversation = resuming
       ? args[args.indexOf('--conversation') + 1]
       : (process.env.FAKE_SESSION_ID ?? 'agy-int-1');
-    appendFileSync(
-      join(home, 'history.jsonl'),
-      `${JSON.stringify({
-        display: given ? given.slice('--prompt-interactive='.length) : 'hi',
-        timestamp: Date.now(),
-        workspace: process.cwd(),
-        conversationId: conversation,
-      })}\n`,
-    );
+    const logArgIndex = args.indexOf('--log-file');
+    const logArgEq = args.find((arg) => arg.startsWith('--log-file='));
+    const requestedLog =
+      logArgIndex >= 0 ? args[logArgIndex + 1] : logArgEq ? logArgEq.slice('--log-file='.length) : undefined;
+    const now = new Date();
+    const pad = (n, len = 2) => String(n).padStart(len, '0');
+    const stamp =
+      `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
+      `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const glogTime =
+      `${pad(now.getMonth() + 1)}${pad(now.getDate())} ` +
+      `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(now.getMilliseconds() * 1000, 6)}`;
+    const inside = (file, root) => {
+      const r = resolve(root);
+      const f = resolve(file);
+      return f === r || f.startsWith(`${r}${sep}`);
+    };
+    const logPath =
+      requestedLog && (inside(requestedLog, home) || inside(requestedLog, tmpdir()))
+        ? requestedLog
+        : join(home, 'log', `cli-${stamp}.log`);
+    mkdirSync(dirname(logPath), { recursive: true });
+    const logLines = [
+      `I${glogTime}      10 server.go:2781] Starting language server process with pid ${process.pid}`,
+      `I${glogTime}       1 common.go:194] Launching CLI mode`,
+      `I${glogTime}       1 server.go:315] Creating CLI server backend: product=antigravity workspaceDirs=[${process.cwd()}] appDataDir=${home} languageServer=true codeAssist=true`,
+      `I${glogTime}       1 manager.go:610] Initializing CLI store manager for workspace ${process.cwd()}`,
+    ];
+    if (process.env.FAKE_AGY_SKIP_LOG_CONV !== '1') {
+      logLines.push(
+        resuming
+          ? `I${glogTime}     416 server.go:3577] GetConversationDetail: found conversation ${conversation} (active=true)`
+          : `I${glogTime}     416 server.go:1269] Created conversation ${conversation} (backend=BACKEND_TYPE_UNSPECIFIED)`,
+      );
+    }
+    // Real agy opens its log with O_TRUNC: two processes on the same path clobber each other.
+    writeFileSync(logPath, `${logLines.join('\n')}\n`);
+
+    if (process.env.FAKE_AGY_DB === '1') {
+      const { DatabaseSync } = await import('node:sqlite');
+      const db = new DatabaseSync(join(home, 'conversation_summaries.db'));
+      db.exec('PRAGMA busy_timeout = 5000');
+      db.exec(
+        'CREATE TABLE IF NOT EXISTS conversation_summaries (conversation_id text primary key, title text, ' +
+          'workspace_uris text, status text, not_fully_idle numeric, killed numeric, ' +
+          'last_modified_time datetime, last_user_input_time datetime)',
+      );
+      const title = given ? given.slice('--prompt-interactive='.length).slice(0, 80) : 'Untitled';
+      const sqlNow = now.toISOString().replace('T', ' ').replace('Z', '+00:00');
+      db.prepare('INSERT OR REPLACE INTO conversation_summaries VALUES (?, ?, ?, ?, 0, 0, ?, ?)').run(
+        conversation,
+        title,
+        '',
+        'CASCADE_RUN_STATUS_IDLE',
+        sqlNow,
+        sqlNow,
+      );
+      db.close();
+    } else {
+      appendFileSync(
+        join(home, 'history.jsonl'),
+        `${JSON.stringify({
+          display: given ? given.slice('--prompt-interactive='.length) : 'hi',
+          timestamp: Date.now(),
+          workspace: process.cwd(),
+          conversationId: conversation,
+        })}\n`,
+      );
+    }
+  }
+  if (process.env.FAKE_PANE === '1') {
+    console.log(`fake-agy ready ${JSON.stringify(args)}`);
+    await new Promise(() => undefined);
   }
   process.exit(Number(process.env.FAKE_EXIT ?? 0));
 }

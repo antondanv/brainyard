@@ -347,6 +347,7 @@ async function agyLive(home: string): Promise<SessionInfo[]> {
       )
       .all();
     const out: SessionInfo[] = [];
+    let logged: Map<string, string[]> | undefined;
     for (const row of rows) {
       const r = record(row);
       const id = text(r.conversation_id);
@@ -362,7 +363,11 @@ async function agyLive(home: string): Promise<SessionInfo[]> {
         interactive: true,
         live: { status: state, kind: 'interactive' },
       };
-      const cwd = workspaces(text(r.workspace_uris))[0] ?? agyLogWorkspaces(join(home, 'log')).get(id)?.[0];
+      let cwd = workspaces(text(r.workspace_uris))[0];
+      if (!cwd) {
+        if (!logged) logged = agyLogWorkspaces(join(home, 'log'));
+        cwd = logged.get(id)?.[0];
+      }
       if (cwd) session.cwd = cwd;
       if (text(r.title)) {
         session.title = text(r.title);
@@ -739,12 +744,16 @@ async function agyFromDatabase(
       )
       .all();
     const out: SessionInfo[] = [];
+    let loggedMap: Map<string, string[]> | undefined;
     for (const row of rows) {
       const r = record(row);
       const id = text(r.conversation_id);
       if (!id) continue;
       let listed = workspaces(text(r.workspace_uris));
-      if (listed.length === 0) listed = logged().get(id) ?? [];
+      if (listed.length === 0) {
+        if (!loggedMap) loggedMap = logged();
+        listed = loggedMap.get(id) ?? [];
+      }
       const cwd = listed.find((place) => places.has(place));
       if (!cwd) continue;
       const session: SessionInfo = { brain: 'antigravity', id, cwd, interactive: true };
@@ -783,9 +792,41 @@ function workspaces(uris: string): string[] {
 const agyLogs = new Map<string, { stamp: string; found: Map<string, string[]> }>();
 
 /**
+ * Which folders each conversation ran in, from one CLI run log. A log that
+ * mixed output from multiple processes returns an empty map rather than
+ * attributing a conversation to the wrong folder.
+ */
+export function agyLogFileFolders(path: string): Map<string, string[]> {
+  let stamp: string;
+  try {
+    const stat = statSync(path);
+    stamp = `${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    return new Map();
+  }
+  let cached = agyLogs.get(path);
+  if (cached?.stamp !== stamp) {
+    cached = { stamp, found: agyLogFolders(readText(path)) };
+    agyLogs.set(path, cached);
+  }
+  return cached.found;
+}
+
+/** Newest `cli-*-<pane>.log` file in Antigravity's log directory, if this pane has its own log. */
+export function findAgyPaneLog(dir: string, pane: string): string | undefined {
+  const suffix = `-${pane}.log`;
+  const match = listDir(dir)
+    .filter((name) => name.startsWith('cli-') && name.endsWith(suffix))
+    .sort()
+    .pop();
+  return match ? join(dir, match) : undefined;
+}
+
+/**
  * Which folders each conversation ran in, from the CLI's run logs: a run
  * names its workspace once (`workspaceDirs=[…]`) and every conversation it
- * creates or opens. A log is read again only when it changed.
+ * creates or opens. A log is read again only when it changed; logs that mixed
+ * multiple processes are skipped.
  */
 export function agyLogWorkspaces(dir: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -796,34 +837,85 @@ export function agyLogWorkspaces(dir: string): Map<string, string[]> {
     return out;
   }
   for (const name of names.sort()) {
-    const path = join(dir, name);
-    let stamp: string;
-    try {
-      const stat = statSync(path);
-      stamp = `${stat.size}:${stat.mtimeMs}`;
-    } catch {
-      continue;
-    }
-    let cached = agyLogs.get(path);
-    if (cached?.stamp !== stamp) {
-      cached = { stamp, found: agyLogFolders(readText(path)) };
-      agyLogs.set(path, cached);
-    }
-    for (const [id, folders] of cached.found) out.set(id, folders);
+    for (const [id, folders] of agyLogFileFolders(join(dir, name))) out.set(id, folders);
   }
   return out;
 }
 
+const GLOG_HEADER = /[IWEF]\d{4} \d{2}:\d{2}:\d{2}\.\d{6}\s+\d+ [A-Za-z0-9_.-]+:\d+\]/g;
+const GLOG_LINE = /^([IWEF])(\d{4}) (\d{2}):(\d{2}):(\d{2})\.(\d{6})\s+\d+ [A-Za-z0-9_.-]+:\d+\] (.*)$/;
+// User prompts can quote arbitrary text (including log snippets); skip them when checking log structure.
+const USER_INPUT_LINE = 'HandleUserInput called with text:';
+
 function agyLogFolders(log: string): Map<string, string[]> {
   const found = new Map<string, string[]>();
+  let dirs: string | undefined;
+  let workspaceCount = 0;
+  let serverStarts = 0;
+  let cliLaunches = 0;
+  let storeInits = 0;
+  const declared = new Set<string>();
+  const referenced = new Set<string>();
+  let prevDay: string | undefined;
+  let prevSec = 0;
+
+  for (const line of log.split('\n')) {
+    const isPromptEcho = line.includes(USER_INPUT_LINE);
+    if (!isPromptEcho) {
+      // Two processes sharing an O_TRUNC log overwrite each other mid-line, leaving a glog header past column 0.
+      GLOG_HEADER.lastIndex = 0;
+      for (let match = GLOG_HEADER.exec(line); match; match = GLOG_HEADER.exec(line)) {
+        if (match.index > 0) return found;
+      }
+    }
+    const glog = GLOG_LINE.exec(line);
+    if (glog) {
+      const day = glog[2]!;
+      const sec = Number(glog[3]) * 3600 + Number(glog[4]) * 60 + Number(glog[5]) + Number(glog[6]) / 1e6;
+      // Another process flushing its own buffered file offset causes large backward jumps (>10s, excluding 1h DST).
+      if (prevDay === day && prevSec - sec > 10 && prevSec - sec < 3000) return found;
+      prevDay = day;
+      prevSec = sec;
+    }
+    const body = glog ? glog[7]! : line;
+    if (body.startsWith(USER_INPUT_LINE)) continue;
+
+    for (const match of body.matchAll(/workspaceDirs=\[([^\]\n]*)\]/g)) {
+      workspaceCount += 1;
+      if (workspaceCount > 1) return found;
+      dirs = match[1]?.trim();
+    }
+    if (/^Starting language server process with pid \d+/.test(body)) {
+      serverStarts += 1;
+      if (serverStarts > 1) return found;
+    }
+    if (body === 'Launching CLI mode') {
+      cliLaunches += 1;
+      if (cliLaunches > 1) return found;
+    }
+    if (body.startsWith('Initializing CLI store manager for workspace ')) {
+      storeInits += 1;
+      if (storeInits > 1) return found;
+    }
+    for (const match of body.matchAll(/(?:Created|found) conversation ([0-9a-f][0-9a-f-]{7,})/g)) {
+      if (match[1]) declared.add(match[1]);
+    }
+    const ref =
+      /^(?:Streaming|Forwarding user message to|Sending user message to) conversation ([0-9a-f][0-9a-f-]{7,})/.exec(
+        body,
+      );
+    if (ref?.[1]) referenced.add(ref[1]);
+  }
+
+  if (!dirs) return found;
+  // A conversation used in the log without a matching Created/found line means another process clobbered startup.
+  for (const id of referenced) {
+    if (!declared.has(id)) return found;
+  }
   // Go prints the list space-separated: a folder with a space in its name
   // stays whole only when it is the only one.
-  const dirs = /workspaceDirs=\[([^\]\n]*)\]/.exec(log)?.[1]?.trim();
-  if (!dirs) return found;
   const folders = [...new Set([dirs, ...dirs.split(' ')])].filter((dir) => dir.startsWith('/'));
-  for (const match of log.matchAll(/(?:Created|found) conversation ([0-9a-f][0-9a-f-]{7,})/g)) {
-    if (match[1]) found.set(match[1], folders);
-  }
+  for (const id of declared) found.set(id, folders);
   return found;
 }
 

@@ -19,12 +19,14 @@
  * says whether it is installed. Not on Windows.
  */
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
+import { logFileArg, paceAgyLaunch } from './agy-launch.js';
 import { BrainyardError } from './errors.js';
-import { findStarted, type OpenOptions, planOpen } from './open.js';
+import { findStarted, type OpenOptions, planOpenFor } from './open.js';
+import { resolveBrain } from './options.js';
 import {
   applyEnv,
   type Command,
@@ -36,7 +38,7 @@ import {
   which,
   withoutSessionVars,
 } from './process.js';
-import type { SessionInfo } from './sessions.js';
+import { agyHome, agyLogFileFolders, findAgyPaneLog, pathVariants, type SessionInfo, sessions } from './sessions.js';
 import type { BrainId } from './types.js';
 import { BRAIN_IDS } from './types.js';
 
@@ -237,8 +239,14 @@ export async function startPane(options: PaneOptions, settings: PaneSettings = {
   if (options.background) {
     throw new BrainyardError('invalid_option', 'a pane is already in the background; drop `background`');
   }
-  const plan = await planOpen(options);
-  const pane = `${plan.brain === 'antigravity' ? 'agy' : plan.brain}-${randomBytes(4).toString('hex')}`;
+  const brain = resolveBrain(options.brain);
+  const pane = `${brain === 'antigravity' ? 'agy' : brain}-${randomBytes(4).toString('hex')}`;
+  const plan = await planOpenFor(options, pane);
+  const agyLog = plan.brain === 'antigravity' ? logFileArg(plan.args) : undefined;
+  // Older Antigravity builds without `--log-file` share `cli-<second>.log`: space launches apart.
+  if (plan.brain === 'antigravity' && !agyLog) {
+    await paceAgyLaunch(options.homes?.antigravity ?? agyHome());
+  }
   const startedAt = new Date();
 
   // The command goes through a one-shot script, not tmux's command line: a
@@ -309,6 +317,16 @@ export async function startPane(options: PaneOptions, settings: PaneSettings = {
   // A server started by this very call keeps its environment for every pane to come: the removed variables stay out of it.
   const got = await call(t, args, applyEnv(t.env, removals(options.env)));
   if (!got.ok) throw new BrainyardError('failed', `tmux did not start the pane: ${got.err || 'no reason given'}`);
+  // Reserve the pane's log path right away so `findPaneSession()` waits for this pane's own log
+  // rather than falling back to another pane's session before `agy` opens its log file.
+  if (agyLog && !logFileArg(options.extraArgs)) {
+    try {
+      mkdirSync(dirname(agyLog), { recursive: true });
+      closeSync(openSync(agyLog, 'a', 0o600));
+    } catch {
+      // `agy` creates the log itself on startup.
+    }
+  }
   await copyToClipboard(t);
   const result: PaneStart = {
     pane,
@@ -483,6 +501,30 @@ export async function findPaneSession(
 ): Promise<SessionInfo | undefined> {
   if (info.sessionId) return undefined;
   if (!info.brain || !info.cwd || !info.startedAt) return undefined;
+  if (info.brain === 'antigravity') {
+    const home = options.homes?.antigravity ?? agyHome();
+    const paneLog = findAgyPaneLog(join(home, 'log'), info.pane);
+    if (paneLog) {
+      const places = pathVariants(info.cwd);
+      let id: string | undefined;
+      for (const [candidate, folders] of agyLogFileFolders(paneLog)) {
+        if (folders.some((folder) => places.has(folder))) id = candidate;
+      }
+      // This pane has its own log: never guess from another pane's session while it is still starting or if mixed.
+      if (!id) return undefined;
+      const list = await sessions({
+        cwd: info.cwd,
+        brains: ['antigravity'],
+        headless: true,
+        live: false,
+        env: applyEnv(process.env, options.env),
+        ...(options.homes ? { homes: options.homes } : {}),
+      });
+      return (
+        list.find((session) => session.id === id) ?? { brain: 'antigravity', id, cwd: info.cwd, interactive: true }
+      );
+    }
+  }
   return findStarted(info.brain, info.cwd, new Date(info.startedAt), options);
 }
 

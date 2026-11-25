@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { agyLogFilePath, logFileArg, paceAgyLaunch } from './agy-launch.js';
 import { toml } from './brains/codex.js';
 import { BRAINS } from './brains/info.js';
 import { opencodeInstructionsEnv } from './brains/opencode.js';
@@ -30,7 +31,15 @@ import { BrainyardError } from './errors.js';
 import { cliFlags } from './flags.js';
 import { commandFor, resolveBrain } from './options.js';
 import { applyEnv, type Command, capture, describeCommand, spawnInteractive, withoutSessionVars } from './process.js';
-import { liveSessions, type SessionInfo, type SessionsOptions, sessions } from './sessions.js';
+import {
+  agyHome,
+  agyLogFileFolders,
+  liveSessions,
+  pathVariants,
+  type SessionInfo,
+  type SessionsOptions,
+  sessions,
+} from './sessions.js';
 import type { BrainId, EnvOverrides, RunError } from './types.js';
 
 export interface OpenOptions {
@@ -143,6 +152,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Builds the command line without running anything. */
 export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
+  return planOpenFor(options);
+}
+
+/** @internal Shared planner; `startPane()` passes its pane name so Antigravity logs carry it. */
+export async function planOpenFor(options: OpenOptions, logTag?: string): Promise<OpenPlan> {
   const brain = resolveBrain(options.brain);
   const invalid = (message: string) => new BrainyardError('invalid_option', message, { brain });
   const cwd = resolve(options.cwd ?? process.cwd());
@@ -231,6 +245,10 @@ export async function planOpen(options: OpenOptions): Promise<OpenPlan> {
     if (prompt) args.push('--', prompt);
   } else if (brain === 'antigravity') {
     args = [];
+    // Give each launch its own log file so concurrent starts never share `cli-<second>.log`.
+    if (flags.has('--log-file') && !logFileArg(options.extraArgs)) {
+      args.push('--log-file', agyLogFilePath(options.homes?.antigravity ?? agyHome(), logTag));
+    }
     if (resume) args.push('--conversation', resume);
     if (options.name?.trim()) warnings.push('Antigravity does not take session names');
     if (options.model) args.push('--model', options.model);
@@ -310,6 +328,10 @@ export async function open(options: OpenOptions): Promise<OpenResult> {
   // A session opened from inside another must not pass for its child (see SESSION_VARS).
   // The plan's own variables come last: they were built on top of the caller's.
   const env = applyEnv(applyEnv(withoutSessionVars(process.env), options.env), plan.env);
+  // Older Antigravity builds without `--log-file` share `cli-<second>.log`: space launches apart.
+  if (plan.brain === 'antigravity' && !logFileArg(plan.args)) {
+    await paceAgyLaunch(options.homes?.antigravity ?? agyHome());
+  }
   const startedAt = new Date();
   return plan.background ? openBackground(plan, env, startedAt) : openHere(plan, options, env, startedAt);
 }
@@ -403,11 +425,26 @@ async function openHere(
   }
   if (plan.sessionId) result.sessionId = plan.sessionId;
   else {
-    const found = await findStarted(plan.brain, plan.cwd, startedAt, options);
-    if (found) result.sessionId = found.id;
-    else result.warnings.push(`no new ${BRAINS[plan.brain].label} session found for this folder`);
+    const logged = plan.brain === 'antigravity' ? agyConversationFromLog(logFileArg(plan.args), plan.cwd) : undefined;
+    if (logged) result.sessionId = logged;
+    else {
+      const found = await findStarted(plan.brain, plan.cwd, startedAt, options);
+      if (found) result.sessionId = found.id;
+      else result.warnings.push(`no new ${BRAINS[plan.brain].label} session found for this folder`);
+    }
   }
   return result;
+}
+
+/** The conversation recorded in one dedicated Antigravity log file for `cwd`, if clean. */
+function agyConversationFromLog(logPath: string | undefined, cwd: string): string | undefined {
+  if (!logPath) return undefined;
+  const places = pathVariants(cwd);
+  let matched: string | undefined;
+  for (const [id, folders] of agyLogFileFolders(logPath)) {
+    if (folders.some((folder) => places.has(folder))) matched = id;
+  }
+  return matched;
 }
 
 /** The session a CLI started in this folder since `since`, read from its store. */
